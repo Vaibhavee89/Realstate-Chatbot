@@ -87,13 +87,20 @@ async def chat(req: Chat):
     body = {"model": MODEL, "messages": msgs, "temperature": 0.2, "max_tokens": 600}
     if FALLBACKS:
         body["models"] = [MODEL] + FALLBACKS
+    answer = None
     try:
         async with httpx.AsyncClient(timeout=60) as cx:
-            r = await cx.post(API, json=body, headers={"Authorization": f"Bearer {key}", "X-Title": "RealEstate Assistant"})
-        r.raise_for_status()
-        answer = r.json()["choices"][0]["message"]["content"]
+            # free models sometimes return empty/null content: retry a couple of times
+            for _ in range(3):
+                r = await cx.post(API, json=body, headers={"Authorization": f"Bearer {key}", "X-Title": "RealEstate Assistant"})
+                r.raise_for_status()
+                answer = ((r.json()["choices"][0]["message"].get("content")) or "").strip()
+                if answer:
+                    break
     except Exception as e:
         return JSONResponse({"answer": f"The model is busy or rate-limited (free tier). Please retry in a moment. ({type(e).__name__})", "sources": []}, status_code=502)
+    if not answer:
+        return JSONResponse({"answer": "The free model returned an empty reply. Please try again.", "sources": []}, status_code=502)
     seen, sources = set(), []
     for c in ctx:
         if c["url"] not in seen:

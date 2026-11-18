@@ -172,7 +172,7 @@ f.onsubmit=async e=>{
   const w=msg('bot','<span class="typing"><i></i><i></i><i></i></span>');
   try{
     const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:m,history:hist})});
-    const j=await r.json();w.innerHTML=md(j.answer);
+    const j=await r.json();j.answer=j.answer||'No reply received. Please try again.';w.innerHTML=md(j.answer);
     if(j.sources&&j.sources.length){
       const c=document.createElement('div');c.className='cite caps';
       c.innerHTML='Sources: '+j.sources.map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener" title="${esc(x.title)}">${esc(site(x.url))}</a>`).join('')+'<button>Copy</button>';
