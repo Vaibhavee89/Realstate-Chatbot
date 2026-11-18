@@ -48,17 +48,30 @@ CHUNKS = load_chunks()
 BM25 = BM25Okapi([tok(c["title"] + " " + c["text"]) for c in CHUNKS]) if CHUNKS else None
 
 
+STOP = set("""a an the of in on at to for from by with and or is are was were be been do does did have has had what who whom
+which when where why how tell me about give show list any some there their it its this that these those can could would should
+please i you we they us our your project projects dar global darglobal wasalt company companies""".split())
+REL = 0.6  # keep chunks scoring at least this fraction of the best match
+
+
 def retrieve(q, k=6):
     if not BM25:
         return []
-    scores = BM25.get_scores(tok(q))
-    # light boost when the question names a company
+    terms = [t for t in tok(q) if t not in STOP] or tok(q)
+    scores = BM25.get_scores(terms)
+    # if the question names exactly one company, strongly prefer that company's chunks
     ql = q.lower()
-    for i, c in enumerate(CHUNKS):
-        if (c["site"] == "dar" and "dar" in ql) or (c["site"] == "wasalt" and "wasalt" in ql):
-            scores[i] *= 1.3
+    dar = bool(re.search(r"\bdar\b|darglobal|dar global", ql))
+    was = "wasalt" in ql
+    if dar != was:
+        want = "dar" if dar else "wasalt"
+        for i, c in enumerate(CHUNKS):
+            scores[i] *= 1.0 if c["site"] == want else 0.15
     top = sorted(range(len(CHUNKS)), key=lambda i: scores[i], reverse=True)[:k]
-    return [CHUNKS[i] for i in top if scores[i] > 0]
+    if not top or scores[top[0]] <= 0:
+        return []
+    cut = scores[top[0]] * REL
+    return [CHUNKS[i] for i in top if scores[i] >= cut]
 
 
 app = FastAPI(title="DarGlobal & Wasalt Assistant")
@@ -106,8 +119,8 @@ async def chat(req: Chat):
         return JSONResponse({"answer": "The free model returned an empty reply. Please try again.", "sources": []}, status_code=502)
     seen, sources = set(), []
     for c in ctx:
-        if c["url"] not in seen:
-            seen.add(c["url"]); sources.append({"title": c["title"] or c["url"], "url": c["url"]})
+        if (c["url"], c["title"]) not in seen:
+            seen.add((c["url"], c["title"])); sources.append({"title": c["title"] or c["url"], "url": c["url"]})
     return {"answer": answer, "sources": sources[:4]}
 
 
