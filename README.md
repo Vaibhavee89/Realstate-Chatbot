@@ -25,10 +25,12 @@ inventory; listing sizes in slugs are unreliable and omitted; no prices or descr
 Company information and a sample of Riyadh prices come from the manually added pages below; the bot cannot answer
 Wasalt questions about current prices outside that sample, or detailed policies.
 Manually added (copied by hand from the public page in a browser, since automated access is blocked):
-`data/wasalt_manual.jsonl` holds 6 cleaned documents from two public pages, https://wasalt.sa/en (about and licences,
-services, FAQ topics; FAQ answers not captured) and https://wasalt.sa/en/properties-for-sale-in-riyadh (Riyadh buying
-guide, a sample of listings with prices, featured projects and auctions; a snapshot, not live; two listings with
-implausible prices were omitted). More pages can be added in the same format
+`data/wasalt_manual.jsonl` holds 9 cleaned documents from three public pages: https://wasalt.sa/en (about and
+licences, services, FAQ topics; FAQ answers not captured), https://wasalt.sa/en/properties-for-sale-in-riyadh (Riyadh
+buying guide, sample listings with prices, featured projects and auctions) and the projects-for-sale search
+(25 projects with price ranges and units available; unit-detail columns were unlabelled and omitted). All are
+snapshots, not live; two listings with implausible prices were omitted; prices are as displayed (currency not stated on
+the project page). More pages can be added in the same format
 (`{"site":"wasalt","url":...,"title":...,"text":...}` per line).
 
 ## 2. Run locally
