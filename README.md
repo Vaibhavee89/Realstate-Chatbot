@@ -3,6 +3,9 @@
 RAG chatbot over publicly scraped data from darglobal.co.uk and wasalt.sa (wasalt.com redirects there).
 Stack: FastAPI + BM25 retrieval + OpenRouter free model (`openrouter/free`), Docker, deployed on Render.
 
+**Live demo:** https://realestate-chatbot-bzc7.onrender.com
+(Render free tier: the first load can take 30-60s while the instance wakes, and answers can be slow because they use a free OpenRouter model.)
+
 ## 1. Data collection
 **DarGlobal** - crawled from darglobal.co.uk (120 public pages: projects, press, insights, one-of-one):
 
