@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DarGlobal & Wasalt Assistant</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:#f5f5f7;color:#1d1d1f;display:flex;flex-direction:column;height:100vh}
+header{padding:14px 20px;background:#111;color:#fff}header small{opacity:.7;display:block}
+#log{flex:1;overflow:auto;padding:16px;max-width:820px;width:100%;margin:0 auto}
+.m{margin:10px 0;padding:10px 14px;border-radius:12px;max-width:85%;white-space:pre-wrap}
+.u{background:#111;color:#fff;margin-left:auto}.a{background:#fff;border:1px solid #e0e0e0}
+.src{font-size:12px;margin-top:6px}.src a{color:#0a58ca;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+form{display:flex;gap:8px;padding:12px;max-width:820px;width:100%;margin:0 auto}
+input{flex:1;padding:12px;border:1px solid #ccc;border-radius:10px;font:inherit}
+button{padding:0 20px;border:0;border-radius:10px;background:#111;color:#fff;font:inherit;cursor:pointer}
+.chips{padding:0 16px;max-width:820px;margin:0 auto;width:100%}.chips span{display:inline-block;margin:4px 6px 0 0;padding:5px 11px;border:1px solid #ccc;border-radius:99px;font-size:13px;cursor:pointer;background:#fff}
+</style></head><body>
+<header><b>DarGlobal & Wasalt Assistant</b><small>Answers come from publicly available website data. Free model: may be slow at peak times.</small></header>
+<div id="log"><div class="m a">Hi! Ask me about DarGlobal's projects, partners and news, or Wasalt's listings and services.</div></div>
+<div class="chips" id="chips"></div>
+<form id="f"><input id="q" placeholder="Ask a question…" autocomplete="off" required><button>Send</button></form>
+<script>
+const log=document.getElementById('log'),q=document.getElementById('q');let hist=[];
+["What projects does DarGlobal have in Oman?","Who are DarGlobal's brand partners?","What is Wasalt?","What is DGCP?"].forEach(t=>{const s=document.createElement('span');s.textContent=t;s.onclick=()=>{q.value=t;f.requestSubmit()};chips.appendChild(s)});
+function add(t,c){const d=document.createElement('div');d.className='m '+c;d.textContent=t;log.appendChild(d);log.scrollTop=1e9;return d}
+f.onsubmit=async e=>{e.preventDefault();const m=q.value.trim();if(!m)return;q.value='';add(m,'u');const w=add('Thinking…','a');
+try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:m,history:hist})});const j=await r.json();w.textContent=j.answer;
+if(j.sources&&j.sources.length){const s=document.createElement('div');s.className='src';s.innerHTML='Sources:'+j.sources.map(x=>`<a href="${x.url}" target="_blank" rel="noopener">${x.title.replace(/</g,'')}</a>`).join('');w.appendChild(s)}
+hist.push({role:'user',content:m},{role:'assistant',content:j.answer})}catch(err){w.textContent='Network error, please retry.'}};
+</script></body></html>
