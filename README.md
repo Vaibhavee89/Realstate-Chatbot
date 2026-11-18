@@ -21,8 +21,9 @@ public sitemaps (listed in its robots.txt, served unchallenged from cdn.wasalt.s
     python scraper/wasalt_sitemap.py
 Output: `data/wasalt_catalog.jsonl` - aggregate counts (60,000 listings by type, sale/rent, bedrooms; ~8,500
 category pages by city) plus sample listings, derived from URL slugs only. Limitations: it is a snapshot, not live
-inventory; listing sizes in slugs are unreliable and omitted; no prices, descriptions or company information.
-The bot therefore cannot answer Wasalt questions about pricing, services or policies.
+inventory; listing sizes in slugs are unreliable and omitted; no prices or descriptions.
+Company-level information (about, services, licences) comes from the manually added page below; the bot cannot answer
+Wasalt questions about listing prices or detailed policies.
 Manually added (copied by hand from the public page in a browser, since automated access is blocked):
 `data/wasalt_manual.jsonl` holds 3 cleaned documents from https://wasalt.sa/en (about and licences, services, FAQ topics;
 FAQ answers were not captured). More pages can be added in the same format
