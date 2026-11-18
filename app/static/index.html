@@ -181,6 +181,7 @@ f.onsubmit=async e=>{
       srclist.innerHTML=j.sources.map(x=>`<a class="src" href="${esc(x.url)}" target="_blank" rel="noopener"><span class="tag caps">${/wasalt/.test(x.url)?'Wasalt':'DarGlobal'}</span><span class="t">${esc(x.title)}</span><span class="u">${esc(x.url)}</span></a>`).join('');
       srcs.hidden=false;
     }
+    if(!(j.sources&&j.sources.length))srcs.hidden=true;
     if(r.ok)hist.push({role:'user',content:m},{role:'assistant',content:j.answer});
   }catch(err){w.textContent='Network error, please retry.'}
   go.disabled=false;log.scrollTop=log.scrollHeight;q.focus();

@@ -51,6 +51,10 @@ BM25 = BM25Okapi([tok(c["title"] + " " + c["text"]) for c in CHUNKS]) if CHUNKS 
 STOP = set("""a an the of in on at to for from by with and or is are was were be been do does did have has had what who whom
 which when where why how tell me about give show list any some there their it its this that these those can could would should
 please i you we they us our your project projects dar global darglobal wasalt company companies""".split())
+UNKNOWN = re.compile(
+    r"(don['’]t|do not|doesn['’]t|does not|cannot|can['’]t|no) (have|know|contain|include|provide|find|mention|specify|list)|"
+    r"not (available|provided|mentioned|included|in the (provided )?(context|excerpts|information))|no (relevant )?information",
+    re.I)
 REL = 0.6  # keep chunks scoring at least this fraction of the best match
 
 
@@ -118,6 +122,8 @@ async def chat(req: Chat):
     if not answer:
         return JSONResponse({"answer": "The free model returned an empty reply. Please try again.", "sources": []}, status_code=502)
     seen, sources = set(), []
+    if UNKNOWN.search(answer[:240]):
+        return {"answer": answer, "sources": []}  # don't cite pages for "I don't know" answers
     for c in ctx:
         if (c["url"], c["title"]) not in seen:
             seen.add((c["url"], c["title"])); sources.append({"title": c["title"] or c["url"], "url": c["url"]})
