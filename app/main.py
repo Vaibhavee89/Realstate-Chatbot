@@ -84,7 +84,8 @@ async def chat(req: Chat):
     key = os.getenv("OPENROUTER_API_KEY")
     if not key:
         return JSONResponse({"answer": "Server is missing OPENROUTER_API_KEY.", "sources": []}, status_code=500)
-    body = {"model": MODEL, "messages": msgs, "temperature": 0.2, "max_tokens": 600}
+    body = {"model": MODEL, "messages": msgs, "temperature": 0.2, "max_tokens": 1500,
+            "reasoning": {"effort": "low"}}
     if FALLBACKS:
         body["models"] = [MODEL] + FALLBACKS
     answer = None
@@ -94,9 +95,11 @@ async def chat(req: Chat):
             for _ in range(3):
                 r = await cx.post(API, json=body, headers={"Authorization": f"Bearer {key}", "X-Title": "RealEstate Assistant"})
                 r.raise_for_status()
-                answer = ((r.json()["choices"][0]["message"].get("content")) or "").strip()
+                ch = r.json()["choices"][0]
+                answer = (ch["message"].get("content") or "").strip()
                 if answer:
                     break
+                print("empty reply", r.json().get("model"), ch.get("finish_reason"), flush=True)
     except Exception as e:
         return JSONResponse({"answer": f"The model is busy or rate-limited (free tier). Please retry in a moment. ({type(e).__name__})", "sources": []}, status_code=502)
     if not answer:
