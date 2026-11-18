@@ -23,8 +23,10 @@ Output: `data/wasalt_catalog.jsonl` - aggregate counts (60,000 listings by type,
 category pages by city) plus sample listings, derived from URL slugs only. Limitations: it is a snapshot, not live
 inventory; listing sizes in slugs are unreliable and omitted; no prices, descriptions or company information.
 The bot therefore cannot answer Wasalt questions about pricing, services or policies.
-Optionally add manually copied public Wasalt pages to `data/wasalt_manual.jsonl`
-(`{"site":"wasalt","url":...,"title":...,"text":...}` per line); disclose this if used.
+Manually added (copied by hand from the public page in a browser, since automated access is blocked):
+`data/wasalt_manual.jsonl` holds 3 cleaned documents from https://wasalt.sa/en (about and licences, services, FAQ topics;
+FAQ answers were not captured). More pages can be added in the same format
+(`{"site":"wasalt","url":...,"title":...,"text":...}` per line).
 
 ## 2. Run locally
     docker build -t realestate-bot .
