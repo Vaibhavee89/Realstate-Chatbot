@@ -22,11 +22,13 @@ public sitemaps (listed in its robots.txt, served unchallenged from cdn.wasalt.s
 Output: `data/wasalt_catalog.jsonl` - aggregate counts (60,000 listings by type, sale/rent, bedrooms; ~8,500
 category pages by city) plus sample listings, derived from URL slugs only. Limitations: it is a snapshot, not live
 inventory; listing sizes in slugs are unreliable and omitted; no prices or descriptions.
-Company-level information (about, services, licences) comes from the manually added page below; the bot cannot answer
-Wasalt questions about listing prices or detailed policies.
+Company information and a sample of Riyadh prices come from the manually added pages below; the bot cannot answer
+Wasalt questions about current prices outside that sample, or detailed policies.
 Manually added (copied by hand from the public page in a browser, since automated access is blocked):
-`data/wasalt_manual.jsonl` holds 3 cleaned documents from https://wasalt.sa/en (about and licences, services, FAQ topics;
-FAQ answers were not captured). More pages can be added in the same format
+`data/wasalt_manual.jsonl` holds 6 cleaned documents from two public pages, https://wasalt.sa/en (about and licences,
+services, FAQ topics; FAQ answers not captured) and https://wasalt.sa/en/properties-for-sale-in-riyadh (Riyadh buying
+guide, a sample of listings with prices, featured projects and auctions; a snapshot, not live; two listings with
+implausible prices were omitted). More pages can be added in the same format
 (`{"site":"wasalt","url":...,"title":...,"text":...}` per line).
 
 ## 2. Run locally
