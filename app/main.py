@@ -40,7 +40,12 @@ def load_chunks():
                 buf += para + "\n"
             if buf.strip():
                 chunks.append({"site": p["site"], "url": p["url"], "title": p["title"], "text": buf.strip()})
-    return chunks
+    # drop exact-duplicate chunks (e.g. several scraped pages that render the same project list)
+    seen, unique = set(), []
+    for c in chunks:
+        if c["text"] not in seen:
+            seen.add(c["text"]); unique.append(c)
+    return unique
 
 
 tok = lambda s: [w[:-1] if len(w) > 3 and w.endswith("s") else w for w in re.findall(r"\w+", s.lower())]
@@ -50,7 +55,7 @@ BM25 = BM25Okapi([tok(c["title"] + " " + c["text"]) for c in CHUNKS]) if CHUNKS 
 
 STOP = set("""a an the of in on at to for from by with and or is are was were be been do does did have has had what who whom
 which when where why how tell me about give show list any some there their it its this that these those can could would should
-please i you we they us our your project projects dar global darglobal wasalt company companies""".split())
+please i you we they us our your dar global darglobal wasalt company companies many much doe lists listed number total""".split())
 UNKNOWN = re.compile(
     r"(don['’]t|do not|doesn['’]t|does not|cannot|can['’]t|no) (have|know|contain|include|provide|find|mention|specify|list)|"
     r"not (available|provided|mentioned|included|in the (provided )?(context|excerpts|information))|no (relevant )?information",
@@ -61,11 +66,12 @@ REL = 0.6  # keep chunks scoring at least this fraction of the best match
 def retrieve(q, k=6):
     if not BM25:
         return []
-    terms = [t for t in tok(q) if t not in STOP] or tok(q)
-    scores = BM25.get_scores(terms)
-    # if the question names exactly one company, strongly prefer that company's chunks
     ql = q.lower()
     dar = bool(re.search(r"\bdar\b|darglobal|dar global", ql))
+    # "project" is generic for DarGlobal (everything is a project) but meaningful for Wasalt
+    terms = [t for t in tok(q) if t not in STOP and not (dar and t == "project")] or tok(q)
+    scores = BM25.get_scores(terms)
+    # if the question names exactly one company, strongly prefer that company's chunks
     was = "wasalt" in ql
     if dar != was:
         want = "dar" if dar else "wasalt"
