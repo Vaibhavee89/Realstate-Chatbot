@@ -50,7 +50,12 @@ def load_chunks():
 
 tok = lambda s: [w[:-1] if len(w) > 3 and w.endswith("s") else w for w in re.findall(r"\w+", s.lower())]
 CHUNKS = load_chunks()
-BM25 = BM25Okapi([tok(c["title"] + " " + c["text"]) for c in CHUNKS]) if CHUNKS else None
+def _doc(c):
+    path = re.sub(r"https?://[^/]+", "", c["url"]).replace("-", " ").replace("/", " ")  # URL words help ("/partners/...")
+    return tok(c["title"] + " " + path + " " + c["text"])
+
+
+BM25 = BM25Okapi([_doc(c) for c in CHUNKS]) if CHUNKS else None
 
 
 STOP = set("""a an the of in on at to for from by with and or is are was were be been do does did have has had what who whom
@@ -77,11 +82,19 @@ def retrieve(q, k=6):
         want = "dar" if dar else "wasalt"
         for i, c in enumerate(CHUNKS):
             scores[i] *= 1.0 if c["site"] == want else 0.15
-    top = sorted(range(len(CHUNKS)), key=lambda i: scores[i], reverse=True)[:k]
-    if not top or scores[top[0]] <= 0:
+    order = sorted(range(len(CHUNKS)), key=lambda i: scores[i], reverse=True)
+    if not order or scores[order[0]] <= 0:
         return []
-    cut = scores[top[0]] * REL
-    return [CHUNKS[i] for i in top if scores[i] >= cut]
+    cut = scores[order[0]] * REL
+    out, per_url = [], {}
+    for i in order[:40]:  # at most 2 chunks per page so answers can draw on several pages
+        if scores[i] < cut or len(out) >= k:
+            break
+        u = (CHUNKS[i]["url"], CHUNKS[i]["title"])
+        if per_url.get(u, 0) < 2:
+            per_url[u] = per_url.get(u, 0) + 1
+            out.append(CHUNKS[i])
+    return out
 
 
 app = FastAPI(title="DarGlobal & Wasalt Assistant")
