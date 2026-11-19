@@ -117,8 +117,22 @@ async def chat(req: Chat):
                 if answer:
                     break
                 print("empty reply", r.json().get("model"), ch.get("finish_reason"), flush=True)
+    except httpx.HTTPStatusError as e:
+        code = e.response.status_code
+        try:
+            detail = e.response.json().get("error", {}).get("message", "")
+        except Exception:
+            detail = ""
+        print("openrouter error", code, detail[:300], flush=True)
+        hint = {
+            429: "Rate limit reached (the free tier allows limited requests per day). Please try again later.",
+            401: "The server's OpenRouter API key was rejected (401).",
+            402: "The OpenRouter account has insufficient credits (402).",
+            404: "The configured model is unavailable (404).",
+        }.get(code, "The model service returned an error. Please retry in a moment.")
+        return JSONResponse({"answer": f"{hint} [OpenRouter status {code}]", "sources": []}, status_code=502)
     except Exception as e:
-        return JSONResponse({"answer": f"The model is busy or rate-limited (free tier). Please retry in a moment. ({type(e).__name__})", "sources": []}, status_code=502)
+        return JSONResponse({"answer": f"Could not reach the model service ({type(e).__name__}). Please retry in a moment.", "sources": []}, status_code=502)
     if not answer:
         return JSONResponse({"answer": "The free model returned an empty reply. Please try again.", "sources": []}, status_code=502)
     seen, sources = set(), []
