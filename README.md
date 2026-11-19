@@ -12,6 +12,17 @@ Try: *"What projects does DarGlobal have in Oman?"*, *"Who are DarGlobal's brand
 *"What is the Astera by Aston Martin?"*, *"What is Wasalt?"*, *"How many villas for sale does Wasalt list?"*,
 *"What is the cheapest project on Wasalt?"*, *"Can foreigners buy property in Riyadh according to Wasalt?"*
 
+## Screenshots
+Captured from the live deployment with real answers.
+
+| Home | DarGlobal answer with sources |
+|---|---|
+| ![Home](docs/screenshots/01-home.png) | ![DarGlobal answer](docs/screenshots/02-darglobal-answer.png) |
+
+| Wasalt answers (counts and projects) | Mobile |
+|---|---|
+| ![Wasalt answers](docs/screenshots/03-wasalt-answers.png) | ![Mobile](docs/screenshots/04-mobile.png) |
+
 ## How it works
 1. **Data** (`data/*.jsonl`, one page per line: `site`, `url`, `title`, `text`) is split into ~900-character chunks at startup;
    identical chunks are dropped.
