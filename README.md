@@ -95,7 +95,9 @@ were checked against the scraped data first, and matching ignores case, accents,
 Run against the live deployment on 2026-11-19 with `openrouter/free`.
 The one failure is *"Which brands partner with DarGlobal?"*: the full brand list sits in a long chunk on the investor page
 that keyword (BM25) retrieval ranks too low, so the answer names only Lamborghini and Paramount. It is left as a known
-limitation (retrieval was not tuned to the test set).
+limitation (retrieval was not tuned to the test set). Chunk sizes (300-900 characters, sentence-level splits) and a suffix
+stemmer were tried; none beat 22/23, each fix just moved the miss to another question (e.g. the Riyadh phone number), so the
+settings were left unchanged. A real fix would need embedding-based or hybrid retrieval.
 
     python eval/run_eval.py --retrieval-only                      # free, no model calls
     python eval/run_eval.py --url https://<your-app>.onrender.com  # full run; --resume reuses cached answers
