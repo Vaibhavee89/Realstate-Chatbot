@@ -137,11 +137,12 @@ def main():
 
     ret = retrieval_eval(qs)
     ret_hits = sum(v["ok"] for v in ret.values())
-    print(f"Retrieval hit rate: {ret_hits}/{len(answerable)} = {ret_hits / len(answerable):.0%}")
-    for q in answerable:
-        if not ret[q["id"]]["ok"]:
-            print(f"  MISS {q['id']}: {q['q']}  groups={ret[q['id']]['groups']}")
-    print("  by group: " + by_group([{"id": k, "ok": v["ok"]} for k, v in ret.items()], byq))
+    if answerable:
+        print(f"Retrieval hit rate: {ret_hits}/{len(answerable)} = {ret_hits / len(answerable):.0%}")
+        for q in answerable:
+            if not ret[q["id"]]["ok"]:
+                print(f"  MISS {q['id']}: {q['q']}  groups={ret[q['id']]['groups']}")
+        print("  by group: " + by_group([{"id": k, "ok": v["ok"]} for k, v in ret.items()], byq))
     g_sets, g_false = guard_eval(qs)
     print("Advice guard, regex layer only (offline): " + ", ".join(f"{k} {v[0]}/{v[1]}" for k, v in g_sets.items())
           + f"; false refusals on the {sum(1 for q in qs if not q.get('refuse'))} other questions: {len(g_false)} {g_false or ''}")

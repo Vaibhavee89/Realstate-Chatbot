@@ -188,7 +188,7 @@ message is calm, and that passages are still returned, on both the streaming and
 advice-marker path and that an obvious advice question makes zero model calls.
 
 ## Evaluation
-A small eval suite lives in `eval/`: 86 questions (`eval/questions.json`). Expected facts were checked against the scraped
+A small eval suite lives in `eval/`: 108 questions (`eval/questions.json`; the 86 described here were run together, and the 22 buy-intent questions below were run separately). Expected facts were checked against the scraped
 data first, and matching ignores case, accents, commas, spacing and `[n]` citation markers. The groups:
 40 **answerable** questions with expected facts (23 fact lookups, 8 country and comparison, 6 paraphrases with little word
 overlap such as "Who runs DarGlobal day to day?", 3 boundary questions that mention investing but are factual, e.g. "What do
@@ -216,6 +216,22 @@ By group, answers: fact lookups 22/23, country and comparison 8/8, paraphrases 5
 wrote the second set after freezing the design). The model layer is what generalizes: together they refused 24/24, including
 all 8 held-out questions, with no false refusals. Eight held-out questions is a small sample, and the model layer relies on a
 free model following the marker instruction.
+
+**Lead handoff (buy-intent detection).** 14 phrasings that should show the contact card ("I want to buy a villa in Muscat",
+"Could I come and see the show apartment?"), 6 written while building the regex and 8 fresh ones written afterwards, and
+8 near-miss questions that must not ("What is DarGlobal's sales office address in Riyadh?"). Live, 2026-11-19:
+
+| | Regex layer alone (offline) | Whole system (live) |
+|---|---|---|
+| Phrasings written while building the regex | 6 / 6 | 6 / 6 |
+| **Held-out phrasings** | **0 / 8** | **5 / 8** |
+| False cards on other questions | 0 / 94 | 0 / 24 (the near-misses plus 16 factual questions) |
+
+The model layer is what generalizes, as with the advice guardrail, but it is not perfect: it missed *"put down a deposit on a
+unit"*, *"sign up to get on the list"* and *"I'm ready to move forward with an apartment"*. I did not add patterns for these (they
+would turn the held-out set into training data); a missed card costs little because the Enquire button is always there. Run just
+this group with `python eval/run_eval.py --url <app> --only v6,v7,v8 --out eval/results_handoff.json`; results are in
+`eval/results_handoff.json`.
 
 **What hybrid retrieval and metadata changed** (retrieval hit rate on the same 37 questions, offline):
 
