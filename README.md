@@ -22,6 +22,13 @@ drives a real browser against the live app, so the answers are real. The free mo
 only the wait before the first word is sped up, and the video says so on screen while it plays; typing, streaming and
 clicks run at real speed. The enquiry form is filled with obviously fake data.
 
+The UI has a **dark and a light theme**: it follows your system setting, the header button switches, and the choice is
+remembered.
+
+| Dark | Light |
+|---|---|
+| ![Dark theme](docs/screenshots/01-home.png) | ![Light theme](docs/screenshots/05-light-mode.png) |
+
 **Try:** *What projects does DarGlobal have in Oman?* · *Compare DarGlobal and Wasalt: what does each company do?* ·
 *How many villas for sale does Wasalt list?* · *What is the cheapest project on Wasalt?* · *Should I invest in AIDA?*
 (it declines) · *I want to buy a villa in Muscat* (it offers a next step).
@@ -228,6 +235,6 @@ How the system behaves when models fail, how the weekly data refresh works, and 
    gracefully when the model is unreachable, enquiries save, the admin token is enforced, and the container is not root.
 
 Locally: `python tests/test_build_meta.py` (13 checks), `python tests/test_resilience.py` (23), `python tests/test_leads_logging.py`
-(39), `python eval/run_eval.py --retrieval-only --min-retrieval 0.9`, `scripts/smoke_container.sh <image>`. The full eval
+(39), `python eval/run_eval.py --retrieval-only --min-retrieval 0.9`, `scripts/smoke_container.sh <image>`, and (needs Playwright, not in CI) `python tests/test_ui_theme.py`, which checks the theme logic and the WCAG contrast of every visible text element in both themes. The full eval
 (`python eval/run_eval.py --url <app>`) needs about 60 model requests, more than the free tier allows per day, so it is not
 in CI. A separate scheduled workflow (`refresh-data.yml`) refreshes the data weekly.
