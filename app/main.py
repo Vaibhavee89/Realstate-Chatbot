@@ -196,7 +196,8 @@ async def chat_stream(req: Chat):
     body["stream"] = True
 
     async def gen():
-        yield sse({"start": True})  # flush headers right away so the browser knows the connection is alive
+        # flush headers right away; also reports what retrieval found so the UI can show a real status line
+        yield sse({"start": True, "found": len(ctx), "pages": len({(c["url"], c["title"]) for c in ctx})})
         answer = ""
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(90, read=75)) as cx:

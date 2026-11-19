@@ -34,7 +34,9 @@ Captured from the live deployment with real answers.
    (`{"start"}`, `{"t": token}`..., then `{"done", "sources"}` or `{"error"}`), so text appears as it is generated
    instead of after the full reply; a slow free model feels much faster. Empty streams are retried before anything is
    shown, and a mid-answer failure keeps the partial text and adds a note. `POST /api/chat` returns the same answer as
-   one JSON response (used by the eval).
+   one JSON response (used by the eval). While waiting for the first token the UI shows a real status line: "Searching
+   sources…", then what retrieval found ("Found 6 excerpts from 5 pages · writing answer…", from the `start` event), or
+   "Waking the server (free tier)…" if Render's sleeping instance has not answered after 4 s.
 5. **Serving**: FastAPI (`app/main.py`) with a single-page UI (`app/static/index.html`), packaged with Docker.
 
 ## 1. Data collection
