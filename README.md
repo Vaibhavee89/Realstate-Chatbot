@@ -30,7 +30,12 @@ Captured from the live deployment with real answers.
    is restricted to that company's data, weak matches are cut, and at most two chunks per page are used.
 3. **Generation**: the top chunks go to an OpenRouter free model (`openrouter/free`) with an instruction to answer only from
    the excerpts. Sources are shown, but not for "I don't know" answers.
-4. **Serving**: FastAPI (`app/main.py`) with a single-page UI (`app/static/index.html`), packaged with Docker.
+4. **Streaming**: the UI calls `POST /api/chat/stream`, which forwards OpenRouter's tokens as Server-Sent Events
+   (`{"start"}`, `{"t": token}`..., then `{"done", "sources"}` or `{"error"}`), so text appears as it is generated
+   instead of after the full reply; a slow free model feels much faster. Empty streams are retried before anything is
+   shown, and a mid-answer failure keeps the partial text and adds a note. `POST /api/chat` returns the same answer as
+   one JSON response (used by the eval).
+5. **Serving**: FastAPI (`app/main.py`) with a single-page UI (`app/static/index.html`), packaged with Docker.
 
 ## 1. Data collection
 **DarGlobal** - crawled from darglobal.co.uk: 120 public pages (projects, partners, press releases, insights, FAQ).

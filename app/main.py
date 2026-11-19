@@ -3,7 +3,7 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from rank_bm25 import BM25Okapi
@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
 FALLBACKS = [m for m in os.getenv("OPENROUTER_FALLBACKS", "").split(",") if m]
-API = "https://openrouter.ai/api/v1/chat/completions"
+API = os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions")  # override only for tests
 
 SYSTEM = (
     "You are a helpful assistant for two real-estate companies: DarGlobal (London-listed luxury "
@@ -110,26 +110,57 @@ def health():
     return {"ok": True, "chunks": len(CHUNKS), "model": MODEL}
 
 
-@app.post("/api/chat")
-async def chat(req: Chat):
+def build(req):
+    """retrieve context and build the OpenRouter request body"""
     ctx = retrieve(req.message)
     context = "\n\n".join(f"[{i+1}] ({c['site']}) {c['url']}\n{c['text']}" for i, c in enumerate(ctx)) or "(no relevant context found)"
     msgs = [{"role": "system", "content": SYSTEM + "\n\nCONTEXT:\n" + context}]
     msgs += [m for m in req.history[-6:] if m.get("role") in ("user", "assistant")]
     msgs.append({"role": "user", "content": req.message})
-    key = os.getenv("OPENROUTER_API_KEY")
-    if not key:
-        return JSONResponse({"answer": "Server is missing OPENROUTER_API_KEY.", "sources": []}, status_code=500)
     body = {"model": MODEL, "messages": msgs, "temperature": 0.2, "max_tokens": 1500,
             "reasoning": {"effort": "low"}}
     if FALLBACKS:
         body["models"] = [MODEL] + FALLBACKS
+    return ctx, body
+
+
+def headers(key):
+    return {"Authorization": f"Bearer {key}", "X-Title": "RealEstate Assistant"}
+
+
+def explain_status(code, detail=""):
+    print("openrouter error", code, detail[:300], flush=True)
+    hint = {
+        429: "Rate limit reached (the free tier allows limited requests per day). Please try again later.",
+        401: "The server's OpenRouter API key was rejected (401).",
+        402: "The OpenRouter account has insufficient credits (402).",
+        404: "The configured model is unavailable (404).",
+    }.get(code, "The model service returned an error. Please retry in a moment.")
+    return f"{hint} [OpenRouter status {code}]"
+
+
+def pick_sources(ctx, answer):
+    if UNKNOWN.search(answer[:240]):
+        return []  # don't cite pages for "I don't know" answers
+    seen, sources = set(), []
+    for c in ctx:
+        if (c["url"], c["title"]) not in seen:
+            seen.add((c["url"], c["title"])); sources.append({"title": c["title"] or c["url"], "url": c["url"]})
+    return sources[:4]
+
+
+@app.post("/api/chat")
+async def chat(req: Chat):
+    key = os.getenv("OPENROUTER_API_KEY")
+    if not key:
+        return JSONResponse({"answer": "Server is missing OPENROUTER_API_KEY.", "sources": []}, status_code=500)
+    ctx, body = build(req)
     answer = None
     try:
         async with httpx.AsyncClient(timeout=60) as cx:
             # free models sometimes return empty/null content: retry a couple of times
             for _ in range(3):
-                r = await cx.post(API, json=body, headers={"Authorization": f"Bearer {key}", "X-Title": "RealEstate Assistant"})
+                r = await cx.post(API, json=body, headers=headers(key))
                 r.raise_for_status()
                 ch = r.json()["choices"][0]
                 answer = (ch["message"].get("content") or "").strip()
@@ -142,25 +173,73 @@ async def chat(req: Chat):
             detail = e.response.json().get("error", {}).get("message", "")
         except Exception:
             detail = ""
-        print("openrouter error", code, detail[:300], flush=True)
-        hint = {
-            429: "Rate limit reached (the free tier allows limited requests per day). Please try again later.",
-            401: "The server's OpenRouter API key was rejected (401).",
-            402: "The OpenRouter account has insufficient credits (402).",
-            404: "The configured model is unavailable (404).",
-        }.get(code, "The model service returned an error. Please retry in a moment.")
-        return JSONResponse({"answer": f"{hint} [OpenRouter status {code}]", "sources": []}, status_code=502)
+        return JSONResponse({"answer": explain_status(code, detail), "sources": []}, status_code=502)
     except Exception as e:
         return JSONResponse({"answer": f"Could not reach the model service ({type(e).__name__}). Please retry in a moment.", "sources": []}, status_code=502)
     if not answer:
         return JSONResponse({"answer": "The free model returned an empty reply. Please try again.", "sources": []}, status_code=502)
-    seen, sources = set(), []
-    if UNKNOWN.search(answer[:240]):
-        return {"answer": answer, "sources": []}  # don't cite pages for "I don't know" answers
-    for c in ctx:
-        if (c["url"], c["title"]) not in seen:
-            seen.add((c["url"], c["title"])); sources.append({"title": c["title"] or c["url"], "url": c["url"]})
-    return {"answer": answer, "sources": sources[:4]}
+    return {"answer": answer, "sources": pick_sources(ctx, answer)}
+
+
+def sse(obj):
+    return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
+
+
+@app.post("/api/chat/stream")
+async def chat_stream(req: Chat):
+    """Server-Sent Events: {"start":true}, then {"t": "<token text>"} ..., then {"done":true,"sources":[...]}
+    or {"error": "..."}. Tokens are forwarded as OpenRouter produces them."""
+    key = os.getenv("OPENROUTER_API_KEY")
+    if not key:
+        return JSONResponse({"answer": "Server is missing OPENROUTER_API_KEY.", "sources": []}, status_code=500)
+    ctx, body = build(req)
+    body["stream"] = True
+
+    async def gen():
+        yield sse({"start": True})  # flush headers right away so the browser knows the connection is alive
+        answer = ""
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(90, read=75)) as cx:
+                for _ in range(3):  # a free model sometimes streams nothing: retry only while no token was sent
+                    async with cx.stream("POST", API, json=body, headers=headers(key)) as r:
+                        if r.status_code != 200:
+                            raw = (await r.aread()).decode("utf-8", "ignore")
+                            try:
+                                detail = json.loads(raw).get("error", {}).get("message", "")
+                            except Exception:
+                                detail = raw
+                            yield sse({"error": explain_status(r.status_code, detail)})
+                            return
+                        async for line in r.aiter_lines():
+                            if not line.startswith("data:"):
+                                continue  # blank lines and ": OPENROUTER PROCESSING" keep-alive comments
+                            data = line[5:].strip()
+                            if data == "[DONE]":
+                                break
+                            try:
+                                j = json.loads(data)
+                            except ValueError:
+                                continue
+                            if j.get("error"):
+                                yield sse({"error": "The model stopped mid-answer: " + str(j["error"].get("message", ""))[:200]})
+                                return
+                            delta = ((j.get("choices") or [{}])[0].get("delta") or {}).get("content")
+                            if delta:
+                                answer += delta
+                                yield sse({"t": delta})
+                    if answer.strip():
+                        break
+                    print("empty stream", flush=True)
+        except Exception as e:
+            yield sse({"error": f"Could not reach the model service ({type(e).__name__}). Please retry in a moment."})
+            return
+        if not answer.strip():
+            yield sse({"error": "The free model returned an empty reply. Please try again."})
+            return
+        yield sse({"done": True, "sources": pick_sources(ctx, answer.strip())})
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 app.mount("/static", StaticFiles(directory=ROOT / "app" / "static"), name="static")
