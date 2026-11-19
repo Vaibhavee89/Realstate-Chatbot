@@ -120,6 +120,9 @@ def main():
     ap.add_argument("--retrieval-only", action="store_true")
     ap.add_argument("--resume", action="store_true", help="reuse successful answers from eval/results.json")
     ap.add_argument("--delay", type=float, default=2.0)
+    ap.add_argument("--min-retrieval", type=float, default=None,
+                    help="CI gate (with --retrieval-only): exit 1 if the retrieval hit rate is below this fraction, or if a "
+                         "guard/handoff pattern fires on a question it should leave alone")
     ap.add_argument("--only", help="comma-separated tags (v1..v8): run just these question groups, e.g. v7,v8")
     ap.add_argument("--out", type=Path, default=RESULTS, help="where to write the results JSON")
     a = ap.parse_args()
@@ -151,6 +154,19 @@ def main():
         print("Handoff intent, regex layer only (offline): " + ", ".join(f"{k} {v[0]}/{v[1]}" for k, v in h_sets.items())
               + f"; false triggers on the {sum(1 for q in qs if not q.get('handoff'))} other questions: {len(h_false)} {h_false or ''}")
     if a.retrieval_only:
+        if a.min_retrieval is not None:
+            rate = ret_hits / len(answerable) if answerable else 1.0
+            problems = []
+            if rate < a.min_retrieval:
+                problems.append(f"retrieval hit rate {rate:.0%} is below the required {a.min_retrieval:.0%}")
+            if g_false:
+                problems.append(f"the advice guard refused factual questions: {g_false}")
+            if h_false:
+                problems.append(f"the handoff patterns fired on other questions: {h_false}")
+            if problems:
+                print("GATE FAILED: " + "; ".join(problems))
+                sys.exit(1)
+            print(f"Gate passed: retrieval {rate:.0%} >= {a.min_retrieval:.0%}, no false refusals or handoffs.")
         return
 
     from app.main import is_unknown  # same "I don't know" test the server uses to hide sources

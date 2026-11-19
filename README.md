@@ -1,288 +1,233 @@
 # DarGlobal & Wasalt Assistant
 
-A retrieval-augmented chatbot that answers questions about two real-estate companies, **DarGlobal** (darglobal.co.uk)
-and **Wasalt** (wasalt.sa), using publicly available website data. Answers cite their source pages and say so when the
-data does not contain the answer.
+[![CI](https://github.com/Vaibhavee89/Realstate-Chatbot/actions/workflows/ci.yml/badge.svg)](https://github.com/Vaibhavee89/Realstate-Chatbot/actions/workflows/ci.yml)
 
-**Live demo: https://realestate-chatbot-bzc7.onrender.com**
-(Render free tier: the first load can take 30-60 s while the instance wakes. Replies take a few seconds to ~30 s
-because they use a free OpenRouter model.)
+**[▶ Watch the 60-second demo](docs/demo.mp4)** · **[Live app](https://realestate-chatbot-bzc7.onrender.com)**
+*(Render free tier: the first load can take 30–60 s while the instance wakes, and answers take 3–40 s because they come
+from free OpenRouter models.)*
 
-Try: *"What projects does DarGlobal have in Oman?"*, *"Who are DarGlobal's brand partners?"*,
-*"What is the Astera by Aston Martin?"*, *"What is Wasalt?"*, *"How many villas for sale does Wasalt list?"*,
-*"What is the cheapest project on Wasalt?"*, *"Can foreigners buy property in Riyadh according to Wasalt?"*
+[![Demo video: click to play](docs/screenshots/01-home.png)](docs/demo.mp4)
 
-## Screenshots
-Captured from the live deployment with real answers.
+A retrieval-augmented chatbot that answers questions about two real-estate companies, **DarGlobal** (darglobal.co.uk) and
+**Wasalt** (wasalt.sa), from their public web pages. Every answer streams in, cites the passages it came from (click a
+citation to read the passage), and says "I don't have that" when the data does not contain the answer. It is not run by
+either company.
 
-| Home | DarGlobal answer with sources |
+> **Read this first: Wasalt blocks bots.** wasalt.sa answers automated requests with a Cloudflare challenge, which I did
+> not try to defeat. Wasalt's data is therefore thinner than DarGlobal's: a catalog built from its public sitemaps plus
+> three pages copied by hand from a normal browser. [What I did and what it costs](#the-wasalt-problem-and-what-i-did-about-it).
+
+*How the video was made:* it is an automated recording, not a hand-driven capture. A script (`scripts/record_demo.py`)
+drives a real browser against the live app, so the answers are real. The free model can take 10–40 s to start answering, so
+only the wait before the first word is sped up, and the video says so on screen while it plays; typing, streaming and
+clicks run at real speed. The enquiry form is filled with obviously fake data.
+
+**Try:** *What projects does DarGlobal have in Oman?* · *Compare DarGlobal and Wasalt: what does each company do?* ·
+*How many villas for sale does Wasalt list?* · *What is the cheapest project on Wasalt?* · *Should I invest in AIDA?*
+(it declines) · *I want to buy a villa in Muscat* (it offers a next step).
+
+## Architecture
+
+```mermaid
+flowchart TB
+  subgraph PIPE["1. Data pipeline: weekly GitHub Action, then the Docker build"]
+    direction LR
+    DAR["DarGlobal crawler<br/>robots.txt, 1 s delay,<br/>bot challenges skipped"]
+    WCAT["Wasalt sitemap catalog<br/>(counts by type and city)"]
+    WMAN["Wasalt pages copied by hand<br/>(the site blocks bots)"]
+    DATA[("data/*.jsonl")]
+    META["build_meta.py<br/>validate, meta.json"]
+    IDX["build_index.py<br/>chunk metadata + embeddings"]
+    DAR --> DATA
+    WCAT --> DATA
+    WMAN --> DATA
+    DATA --> META
+    DATA --> IDX
+  end
+
+  subgraph APP["2. FastAPI app, in Docker on Render"]
+    direction LR
+    Q["Question"] --> G1{"Advice question?<br/>regex layer"}
+    G1 -- "yes" --> REF["Refusal +<br/>disclaimer"]
+    G1 -- "no" --> RET["Hybrid retrieval<br/>BM25 + embeddings<br/>+ company / country /<br/>page-type metadata"]
+    RET --> LLM["Free-model chain<br/>openrouter/free, Gemma,<br/>Nemotron; one retry"]
+    LLM -- "advice marker" --> REF
+    LLM --> ANS["Streamed answer with<br/>[n] citations + passages"]
+    LLM -- "buy intent" --> HND["Handoff card: official<br/>contact links + enquiry form"]
+    LLM -. "quota or outage" .-> FALL["Friendly message +<br/>retrieved passages"]
+    LLM -.-> DB[("SQLite log: latency,<br/>model, sources,<br/>thumbs, enquiries")]
+    DB --> ADM["/admin stats<br/>(token)"]
+    HND -. "optional webhook" .-> HOOK["Slack / CRM"]
+  end
+
+  IDX --> RET
+  META --> UI["3. Browser UI: SSE streaming, citations,<br/>thumbs, 'data last updated' date"]
+  REF --> UI
+  ANS --> UI
+  HND --> UI
+  FALL --> UI
+```
+
+**Life of a question.**
+1. A regex layer refuses obvious investment-advice questions before any model call (instant, free).
+2. Retrieval scores every chunk with **BM25** (exact names and numbers) blended 60/40 with **small static embeddings**
+   (paraphrases), then uses **metadata** on each chunk (company, page type, country): a question naming one company is
+   restricted to it, a country in the question boosts chunks about it, and a comparison retrieves from each company
+   separately. At most two chunks per page; weak matches are cut.
+3. The top chunks, labelled with their company, page type and country, go to a **chain of three free models**; the first
+   that answers wins. The model is told to answer only from the excerpts and to cite them as `[1]`, `[2]`.
+4. The reply streams to the browser over Server-Sent Events. The server holds back the first few characters to catch two
+   markers the model may start with: one for advice-seeking questions (swapped for the refusal), one for buying intent
+   (adds the handoff card).
+5. Citations become clickable chips that open the exact passage; each answer has thumbs up/down. One row per question
+   (latency, model, sources, outcome, rating) goes to SQLite.
+
+| Path | What it is |
 |---|---|
-| ![Home](docs/screenshots/01-home.png) | ![DarGlobal answer](docs/screenshots/02-darglobal-answer.png) |
+| `app/main.py` | FastAPI routes: chat (streaming + JSON), feedback, enquiry form, admin, data metadata |
+| `app/retrieval.py` | chunking, chunk metadata, BM25 + embeddings, metadata-aware ranking |
+| `app/llm.py` | the model chain, retry, quota handling, streaming |
+| `app/guard.py`, `app/handoff.py` | advice refusal and buy-intent detection (regex layer; the model layer is in `main.py`) |
+| `app/store.py` | SQLite: chat log, thumbs, enquiries |
+| `app/static/` | the single-page UI and the admin page |
+| `scraper/` | DarGlobal crawler, Wasalt sitemap catalog, data validation (`build_meta.py`) |
+| `data/` | scraped pages, Wasalt catalog, hand-copied Wasalt pages, `meta.json` |
+| `tests/`, `eval/`, `scripts/` | tests, the 108-question eval, the container smoke test and the demo recorder |
+| `docs/` | [evaluation](docs/EVALUATION.md), [operations](docs/OPERATIONS.md), screenshots, the demo video |
 
-| Wasalt answers (counts and projects) | Mobile |
+## The Wasalt problem, and what I did about it
+
+**What happens.** Every page on wasalt.sa answers an automated request (`curl`, Python `requests`) with HTTP 403 and a
+Cloudflare "Just a moment…" interactive challenge. A headless Chromium run timed out on every page rather than getting
+through. Its `robots.txt` is open (`Allow: /`, only `/search` disallowed), so crawling is not forbidden there, but the
+challenge is an explicit gate on automated visitors.
+
+**What I decided.** I did **not** try to get past it: no stealth browser, no challenge-solving service, no rotating
+proxies. A challenge page is a clear signal that bots are unwelcome, circumventing it is the kind of thing that gets a
+project (and the person running it) in trouble, and a pipeline built on evading a security product would break the day
+Cloudflare updates it. I have not read Wasalt's terms of service, so I make no claim beyond that.
+
+**What I did instead,** in order of how much data it gives:
+1. **Public sitemaps.** `robots.txt` lists sitemaps on `cdn.wasalt.sa`, which are not behind the challenge. They list
+   about 60,000 property listings and 8,500 search/category pages. `scraper/wasalt_sitemap.py` turns the *URLs only* into
+   13 summary documents: counts by property type, sale/rent, bedrooms and city, plus sample listings. No page content is
+   fetched, so there are no prices or descriptions, and the sizes embedded in listing URLs are unreliable, so I left them out.
+2. **Three public pages copied by hand** from a normal browser session (the home page, the Riyadh for-sale page and the
+   projects-for-sale search) and cleaned into 9 documents: what Wasalt says it is, its licences, services, a buying guide for
+   Riyadh, sample listings with prices, and 25 off-plan projects with price ranges. Snapshots, not live data.
+3. **Disclosure.** The UI states how the Wasalt data was gathered and shows when it was last updated; the bot says "I don't
+   have that" for anything outside this data (the eval includes such questions, e.g. Wasalt's support phone number).
+
+**What it costs.** No live listings or prices beyond the hand-copied snapshot; counts come from a sitemap snapshot and are
+not live inventory; the FAQ answers were not captured; the project page does not state a currency, so prices are given "as
+displayed"; and the hand-copied pages are not refreshed by the weekly job. **A proper fix is Wasalt's cooperation**: a data
+feed, an API, or written permission to crawl.
+
+DarGlobal is also behind bot protection (Imperva): during testing it started answering my crawler with a challenge page
+mid-session. I handled it the same way (see [Data freshness](docs/OPERATIONS.md#data-freshness)): never bypassed, blocked
+pages keep their previous copy, and the weekly job refuses to publish a degraded dataset.
+
+## Design decisions, and why
+
+| Decision | Why | What it costs |
+|---|---|---|
+| **Retrieval over scraped pages; answer only from the excerpts; cite them** | Keeps answers tied to sources a reader can check, and lets the bot say "I don't know" | Less fluent than a model answering from memory; only as good as the scrape |
+| **BM25 + small static embeddings (`model2vec` 8M), not a big embedding model or a vector database** | The questions are full of exact names and numbers (BM25 wins), but paraphrases need meaning. 650 chunks and a 512 MB free instance do not justify a vector DB. Measured: embeddings alone 18/23 on fact lookups, BM25 alone 4/6 on paraphrases, blended 22/23 and 6/6 | A tiny model: weak on its own, only useful blended |
+| **Chunk metadata: company, page type, country** | Makes "projects in Oman" and "compare the two companies" work; comparison questions went from 0/3 to 3/3 retrieving both companies | Country tags are keyword heuristics, not hand labels |
+| **Free OpenRouter models, in a chain of three with one retry** | Zero cost, and different providers rarely fail together | Latency 3–40 s, ~50 requests/day without credit, model IDs churn, quality varies |
+| **When the model is unavailable, show the retrieved passages and a calm message** | A reviewer who hits a rate limit should not think the app is broken, and the passages are real source text | The user reads sources instead of a summary |
+| **SSE streaming with a real status line** | A slow free model feels much faster when words appear as they arrive and the wait says what it is doing | A bit more server and client code |
+| **Investment advice: regex first, then a model marker** | The regex is free and instant but only knows its phrasings (measured: caught 2 of 8 fresh ones); the model understands intent (refused 8 of 8 fresh ones live) | Depends on a free model following an instruction |
+| **Handoff to the companies' own contact pages, plus a demo-owned enquiry form** | A real-estate bot should hand buyers on, but this bot is not DarGlobal's or Wasalt's, so the form says plainly that details stay with the demo | Leads do not reach the companies; a production bot would post to their CRM |
+| **SQLite for logs and enquiries, plus an optional webhook** | Simple, queryable, no extra service | Render's free disk is wiped on every deploy; the webhook (or a persistent disk) is how leads survive |
+| **A weekly refresh job that refuses to publish bad data** | Stale data should be visible, and a half-failed scrape must not wipe good data | It may fail loudly when bot protection blocks GitHub's runners |
+| **Embeddings built into the Docker image at build time** | No download or compute at start-up, works offline, starts in about a second | A 545 MB image, and the build needs network once |
+| **An eval with held-out questions, reported honestly** | Regex guards looked perfect on the questions I wrote them against and failed on fresh ones; without held-out sets I would not have known | 108 questions is small and I wrote them |
+
+## Evaluation
+
+108 questions with expected facts, run against the live deployment (details, per-group numbers and failures in
+[docs/EVALUATION.md](docs/EVALUATION.md)):
+
+| | Result |
 |---|---|
-| ![Wasalt answers](docs/screenshots/03-wasalt-answers.png) | ![Mobile](docs/screenshots/04-mobile.png) |
+| Answers containing the expected facts | **38 / 40 (95%)** |
+| Retrieval hit rate (offline, no model) | **38 / 40 (95%)** |
+| Correct "I don't know" on unanswerable questions | **6 / 6** |
+| Investment advice refused (including **8 held-out**) | **24 / 24**, with **0 / 62** false refusals |
+| Buy intent shows the handoff card (**held-out 5 / 8**) | **11 / 14**, with **0 / 24** false cards |
+| Answers that cite a real passage | **39 / 39**; the cited passage holds the fact in **37 / 38** |
 
-## How it works
-1. **Data** (`data/*.jsonl`, one page per line: `site`, `url`, `title`, `text`) is split into ~900-character chunks at startup;
-   identical chunks are dropped. Every chunk keeps **metadata**: company (DarGlobal / Wasalt), page type (partner, press,
-   insight, blog, FAQ, projects, catalog, ...) and the countries it is about (Oman, UAE, Saudi Arabia, Qatar, Spain, UK),
-   derived from the URL and keyword counts (`app/retrieval.py`).
-2. **Hybrid retrieval**: BM25 (keywords: exact names and numbers) is blended 60/40 with small static embeddings
-   (`model2vec` `potion-base-8M`, 256-dim, numpy only, so it fits Render's 512 MB; chunk vectors are precomputed at Docker
-   build time) for paraphrased questions. The metadata then steers the ranking: a question naming one company is restricted
-   to it; a country in the question ("projects in Oman") boosts chunks about that country; page-type hints ("news", "FAQ",
-   "partners") boost matching pages; and a comparison question ("compare DarGlobal and Wasalt", "which company...")
-   retrieves for each company separately, so both are represented. Weak matches are cut and at most two chunks per page are
-   used. If the embeddings cannot load, it falls back to BM25 only. The model sees each excerpt labelled with its company,
-   page type and country.
-3. **Generation**: the top chunks go to an OpenRouter free model with an instruction to answer only from the excerpts,
-   and to cite them as `[1]`, `[2]`... Sources are shown, but not for "I don't know" answers.
-   - **Visible grounding**: every answer carries the exact passages the model saw. Citation numbers become clickable chips
-     that open and highlight that passage (company, page type, country, source link, text); a citation to a passage that
-     does not exist is dropped. For "I don't know" answers the same panel reads "What I searched · N passages, none
-     answered the question".
-   - **Investment-advice refusal**: a question asking for a recommendation or prediction ("should I invest", "will prices
-     rise", "is it a good investment") gets a short disclaimer instead of an answer: *"I can't give investment advice,
-     recommend a purchase, or predict prices or returns. I can tell you what DarGlobal and Wasalt publicly state..."*.
-     Two layers: (1) regex patterns run before any model call (instant, free, high precision, but they only know the
-     phrasings written into them), and (2) the model is told to reply with a marker for advice-seeking questions, which the
-     server swaps for the same refusal (it understands intent the patterns miss). Questions that merely mention investing
-     ("What do ROI, ROE and ROL mean according to DarGlobal?") are answered.
-   - **Resilience** (`app/llm.py`): a chain of three `:free` models from different providers is tried in order
-     (`openrouter/free`, `google/gemma-4-31b-it:free`, `nvidia/nemotron-3-ultra-550b-a55b:free`): busy, upstream rate
-     limit, 5xx, timeout, empty reply or a removed model moves on to the next; if the whole chain fails it is retried
-     **once** after a short pause, and the UI shows "trying another free model…". The daily free quota is shared by all
-     free models, so when it is used up the chain stops at once and says so, with the reset time. In every failure case
-     the user gets a calm message (no raw error codes), a "Try again" button where retrying helps, and the **retrieved
-     passages**, so the app still shows real source text when the AI cannot write an answer. The answer reports which
-     model wrote it. A reply that breaks mid-way keeps its partial text.
-   - **Lead capture / handoff**: when someone says they want to buy, rent, reserve or view ("I want to buy a villa in
-     Muscat", "can I book a viewing?"), the answer is followed by a card: the companies' **own contact pages** (the one the
-     conversation is about first) and a short **enquiry form** (name, email or phone, company, what they are looking for,
-     explicit consent) that saves to SQLite. Two detection layers again: regex for obvious phrasings, plus the model starting
-     its reply with a marker that the server strips. An "Enquire" button in the header and sidebar is always available. The
-     form says plainly that this demo is **not run by DarGlobal or Wasalt** and that nothing is sent to either company: the
-     enquiry goes to the demo's owner, and the official links are the real route. Spam protection: a hidden honeypot field,
-     server-side validation, and 5 enquiries per hour per connection.
-   - **Observability**: every question writes one row to a small SQLite file: retrieval time, time to first token, total
-     time, model that answered, attempts, outcome (answered, idk, refused by regex or model, unavailable, interrupted,
-     aborted), the retrieved source URLs, whether the handoff card was shown, and the **thumbs up/down** (with an optional
-     comment on a thumbs-down). Logging never breaks a chat. See "Leads, logging and privacy".
-4. **Streaming**: the UI calls `POST /api/chat/stream`, which forwards OpenRouter's tokens as Server-Sent Events
-   (`{"start"}`, `{"t": token}`..., then `{"done", "sources"}` or `{"error"}`), so text appears as it is generated
-   instead of after the full reply; a slow free model feels much faster. Empty streams are retried before anything is
-   shown, and a mid-answer failure keeps the partial text and adds a note. `POST /api/chat` returns the same answer as
-   one JSON response (used by the eval). While waiting for the first token the UI shows a real status line: "Searching
-   sources…", then what retrieval found ("Found 6 excerpts from 5 pages · writing answer…", from the `start` event), or
-   "Waking the server (free tier)…" if Render's sleeping instance has not answered after 4 s.
-5. **Serving**: FastAPI (`app/main.py`) with a single-page UI (`app/static/index.html`), packaged with Docker.
+The two failures are *"Which brands partner with DarGlobal?"* (the brand list sits in a chunk with unrelated text) and
+*"Who runs DarGlobal day to day?"*. Hybrid retrieval raised the retrieval hit rate from 86% to 95% on the same questions.
+The regex layers alone caught only 2 of 8 fresh advice questions and 0 of 8 fresh buy-intent ones; the model layer is what
+generalizes.
 
-## 1. Data collection
-**DarGlobal** - crawled from darglobal.co.uk: 120 public pages (projects, partners, press releases, insights, FAQ).
+## Known limitations
 
-    pip install -r requirements-scraper.txt
-    python scraper/scrape.py --site dar
-robots.txt is respected, requests are rate-limited (1 s), and challenge pages are skipped, never bypassed.
-Output: `data/pages.jsonl`.
+- **Wasalt data is thin and a snapshot** (see above): no live listings, no prices beyond hand-copied pages, FAQ answers
+  missing, hand-copied pages never refreshed.
+- **DarGlobal's site also has bot protection.** The weekly refresh may be blocked from GitHub's servers; blocked pages keep
+  their previous copy and a mostly-blocked crawl fails the job instead of publishing. The crawl is capped at 120 pages.
+- **Free models are slow and variable**: 3–40 s to answer, roughly 50 requests/day without credit, free model IDs change,
+  and the same question can get differently worded answers. The chain and the fallback to passages soften this; they do not
+  remove it. Cold starts on Render's free tier take 30–60 s.
+- **Retrieval is keyword plus a tiny embedding model.** It misses answers buried in long lists and vague comparisons ("what
+  does each company do?"), and a page that mentions a term in passing can still be cited.
+- **Guardrails are two layers, neither perfect.** The regex layers are brittle (above); the model layers depend on a free
+  model following an instruction, so an unusual phrasing can slip through (3 of 8 fresh buy-intent phrasings missed).
+  Each held-out set has only 8 questions.
+- **The eval is small and mine.** I wrote the questions; matching checks that the expected facts are present, not that
+  every other word is right; numbers come from one run of a non-deterministic model; there is no human evaluation.
+  `docs/EVALUATION.md` lists every failure.
+- **Scraped text is untrusted input to the model.** A page that contained instructions could try to steer it. I have not
+  tested prompt injection, and the markers are handled server-side but a hostile page could still try to trigger them.
+- **Enquiries stay with this demo** and are not sent to either company (the UI says so). Render's free disk is wiped on
+  every deploy; set `LEAD_WEBHOOK_URL` or attach a disk to keep them. Questions are logged as text (switchable with
+  `LOG_QUESTIONS=0`), there is no retention policy, and none of this is a GDPR-compliance claim.
+- **Small-instance security only**: one admin token, an in-memory rate limiter, no authentication on the chat.
+- **English only.** Arabic project names are shown as they appear on the page, untranslated; the UI has no Arabic mode.
+- **No license file yet**, so by default all rights are reserved.
 
-**Wasalt** - wasalt.sa sits behind a Cloudflare interactive challenge (HTTP 403 for automated clients). This was **not
-bypassed**, so Wasalt's pages could not be scraped automatically. Wasalt data therefore comes from two other public sources:
+## Run it
 
-1. **Sitemap catalog** (automated): Wasalt's public sitemaps (listed in its robots.txt and served unchallenged from
-   cdn.wasalt.sa) are turned into aggregate summaries by `scraper/wasalt_sitemap.py`.
+```bash
+docker build -t realestate-bot .
+docker run -d --name rebot -p 8010:8000 -e OPENROUTER_API_KEY=<your-key> realestate-bot   # then open http://localhost:8010
+```
 
-       python scraper/wasalt_sitemap.py
-   Output: `data/wasalt_catalog.jsonl` - 13 documents: counts of the ~60,000 listed properties by type, sale/rent and
-   bedrooms; ~8,500 category pages by city; and sample listings. It uses URL slugs only, so it has no prices or
-   descriptions, and listing sizes are omitted because slug values are unreliable.
-2. **Manually copied public pages**: three pages were opened in a normal browser and their visible text was copied and
-   cleaned by hand into `data/wasalt_manual.jsonl` (9 documents):
-   - https://wasalt.sa/en - about, licences, services, FAQ topics (FAQ answers were not captured).
-   - https://wasalt.sa/en/properties-for-sale-in-riyadh - Riyadh buying guide, sample listings with prices, featured
-     projects and auctions.
-   - the projects-for-sale search - 25 projects with price ranges and units available.
-
-   These are snapshots, not live data. Two listings with implausible prices were left out, unlabelled unit-detail columns
-   were omitted, and the project page does not state a currency, so prices are given "as displayed". More pages can be
-   added in the same format (`{"site":"wasalt","url":...,"title":...,"text":...}` per line).
-
-## 2. Run locally
-    docker build -t realestate-bot .
-    docker run -d --name rebot -p 8010:8000 -e OPENROUTER_API_KEY=<your-key> realestate-bot
-Open http://localhost:8010 (use any free host port). Without `-d`, stop it with Ctrl+C; with it, `docker rm -f rebot`.
-Health check: `GET /health` returns the model name and number of chunks loaded.
-
-Without Docker: `pip install -r requirements.txt && python -m app.build_index && OPENROUTER_API_KEY=<your-key> uvicorn app.main:app --port 8000`
-(`build_index` precomputes the chunk embeddings into `data/index/`; Docker does this at build time. Re-run it after changing `data/`.)
+Without Docker: `pip install -r requirements.txt && python -m app.build_index && OPENROUTER_API_KEY=<key> uvicorn app.main:app --port 8000`
+(`build_index` precomputes the chunk embeddings; Docker does it at build time; re-run it after changing `data/`).
+Re-scrape with `python scraper/scrape.py --site dar` and `python scraper/wasalt_sitemap.py`.
+Deploy: push to GitHub, then Render → New → Blueprint (reads `render.yaml`) and set `OPENROUTER_API_KEY`; later pushes redeploy.
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `OPENROUTER_API_KEY` | required, from openrouter.ai | - |
+| `OPENROUTER_API_KEY` | required, from openrouter.ai | none |
 | `OPENROUTER_MODEL` | first model in the chain | `openrouter/free` |
 | `OPENROUTER_FALLBACKS` | comma-separated fallback `:free` models (empty = none) | `google/gemma-4-31b-it:free,nvidia/nemotron-3-ultra-550b-a55b:free` |
 | `LLM_READ_TIMEOUT` / `LLM_DEADLINE` | seconds to wait for each model's next chunk / to keep starting attempts | `25` / `60` |
-| `ADMIN_TOKEN` | enables `/admin` (stats page), `/admin/stats`, `/admin/leads`, `/admin/leads.csv`; send it as `X-Admin-Token` or `Authorization: Bearer`. Unset = those routes do not exist | unset |
-| `LEAD_WEBHOOK_URL` | also POST every saved enquiry here (Slack-compatible `text` plus the full record) | unset |
+| `ADMIN_TOKEN` | enables `/admin`, `/admin/stats`, `/admin/leads`, `/admin/leads.csv` (send as `X-Admin-Token`); unset = those routes do not exist | unset |
+| `LEAD_WEBHOOK_URL` | also POST every saved enquiry here (Slack-compatible) | unset |
 | `DB_PATH` | SQLite file for the chat log and enquiries | `data/app.db` |
-| `LOG_QUESTIONS` | `0` = store a short hash of each question instead of its text | `1` |
+| `LOG_QUESTIONS` | `0` = store a hash of each question instead of its text | `1` |
 | `PORT` | listen port (set by Render) | `8000` |
 
-## 3. Deploy (Render, free)
-Push to GitHub -> Render > New > Blueprint (reads `render.yaml`) -> set the `OPENROUTER_API_KEY` secret -> deploy.
-Later pushes to `main` redeploy automatically. Never commit the key (`.env` is git-ignored).
+How the system behaves when models fail, how the weekly data refresh works, and what is stored about visitors are in
+[docs/OPERATIONS.md](docs/OPERATIONS.md).
 
-## Data freshness
-A scheduled GitHub Action (`.github/workflows/refresh-data.yml`, Mondays 03:17 UTC, or run it by hand from the Actions tab)
-keeps the data from going stale:
+## Tests and CI
 
-1. re-crawls DarGlobal (`scraper/scrape.py`) and rebuilds the Wasalt catalog from its public sitemaps
-   (`scraper/wasalt_sitemap.py`);
-2. validates the result and writes `data/meta.json` (`scraper/build_meta.py`): scrape date, date the content last changed,
-   counts, and what changed (pages added / removed / modified);
-3. commits only if something changed, and pushing to `main` redeploys on Render, whose Docker build re-embeds the data.
+[`ci.yml`](.github/workflows/ci.yml) runs on every push and pull request, in two jobs:
 
-The UI shows **"Data last updated 18 Nov 2026"** (and the page and listing counts, which also come from `meta.json`), turns
-amber with "data may be out of date" after 30 days, and `GET /api/meta` returns the record. The few Wasalt pages copied by hand
-(`data/wasalt_manual.jsonl`) are not auto-refreshed.
+1. **Tests and retrieval gate**: a syntax check, three test suites that start the app against a fake OpenRouter (no API key,
+   no network, no quota), then builds the embedding index and **fails if retrieval quality drops below 90%** or a guardrail
+   pattern starts firing on factual questions.
+2. **Docker**: builds the image from the same `Dockerfile` Render uses, starts it, and smoke-tests it
+   (`scripts/smoke_container.sh`): the embeddings are baked in, retrieval works, the advice refusal works, the app degrades
+   gracefully when the model is unreachable, enquiries save, the admin token is enforced, and the container is not root.
 
-**It refuses to publish bad data** (exit 1, nothing committed, the workflow goes red): if DarGlobal pages or Wasalt listings
-drop below 80% of the last run, if any of five key pages (homepage, investor, FAQ, contact, Aston Martin partner page) is
-missing or nearly empty, or if more than half the crawl is stale copies. Tested in `tests/test_build_meta.py` (13 checks, no
-network).
-
-**What building it found.** Testing the job locally, a second crawl lost the DarGlobal homepage and 25 other pages. The
-site's bot protection (Imperva/Incapsula) had started answering the crawler with a near-empty challenge page, which the
-crawler did not recognise, so it skipped the homepage silently and everything only linked from it vanished; an 80% safety
-threshold alone would have let that through (105 of 120 pages). Fixes: challenge pages are now recognised and logged, and a
-page that was blocked or failed keeps its **previous copy** (the count is recorded in `meta.json` and shown in the UI),
-`/partners` and `/one-of-one` are seeded so key pages do not depend on the homepage's links, and the key-page and
-stale-share checks above were added. The challenge is not bypassed (same policy as Wasalt). GitHub's datacenter IPs may well
-be challenged more than a home connection; if so the job will fail loudly instead of publishing a degraded dataset, and the
-UI's date simply goes stale and then amber.
-
-## Leads, logging and privacy
-**What is stored** (in `data/app.db`): per question, the question text (first 500 characters), outcome, timings, model,
-retrieved source URLs and any thumbs rating; per enquiry, the fields the person typed (name, email and/or phone, company,
-message), the question that triggered it, and their consent. **IP addresses are not stored**; the rate limiter keeps them in
-memory only. Set `LOG_QUESTIONS=0` to store only a hash of each question. Nothing is sent anywhere unless `LEAD_WEBHOOK_URL`
-is set. To delete someone's data, remove their rows (or the file); there is no automated retention policy, and this is a demo,
-not a GDPR-compliance claim. Questions are free text, so people can put personal details in them: that is why the question
-log is switchable.
-
-**Durability.** On Render's free tier the container disk is **ephemeral**: `data/app.db` is wiped on every deploy and restart.
-For leads that must survive, set `LEAD_WEBHOOK_URL` (each enquiry is forwarded as it is saved), or attach a persistent disk
-and point `DB_PATH` at it. Read the data with the admin page (`/admin`, needs `ADMIN_TOKEN`) or `GET /admin/stats` and
-`/admin/leads.csv`:
-
-    curl -H "X-Admin-Token: $ADMIN_TOKEN" https://<your-app>.onrender.com/admin/stats
-
-`/admin/stats` returns chat counts by outcome, p50/p95 time to first token and total time, mean retrieval time, thumbs up
-share, the models that answered, the most retrieved sources, recent thumbs-down comments, and the enquiry count.
-
-## Tests
-`python tests/test_build_meta.py` (13 checks) covers the data-freshness validation, `python tests/test_leads_logging.py` (39 checks) covers chat logging and latency, thumbs, the handoff card, the enquiry form (validation, honeypot, rate limit, webhook copy) and admin access control, and `python tests/test_resilience.py` runs 23 checks with no API key and no network: it starts a fake OpenRouter
-(`tests/fake_openrouter.py`) and the app, injects failures (busy model, empty reply, whole chain down, quota used up,
-bad key, break mid-answer) and asserts which models were tried, that exactly one retry happens, that the user-facing
-message is calm, and that passages are still returned, on both the streaming and JSON endpoints. It also checks the
-advice-marker path and that an obvious advice question makes zero model calls.
-
-## Evaluation
-A small eval suite lives in `eval/`: 108 questions (`eval/questions.json`; the 86 described here were run together, and the 22 buy-intent questions below were run separately). Expected facts were checked against the scraped
-data first, and matching ignores case, accents, commas, spacing and `[n]` citation markers. The groups:
-40 **answerable** questions with expected facts (23 fact lookups, 8 country and comparison, 6 paraphrases with little word
-overlap such as "Who runs DarGlobal day to day?", 3 boundary questions that mention investing but are factual, e.g. "What do
-ROI, ROE and ROL mean according to DarGlobal?"); 6 the data **cannot answer** (Wasalt's support phone, DarGlobal's share price,
-an off-topic question); 24 **investment-advice** questions that must be refused; and 16 more factual questions that must simply
-not be refused.
-
-Live deployment, 2026-11-19, with the three-model chain:
-
-| Metric | Score | What it measures |
-|---|---|---|
-| Retrieval hit rate | **38 / 40 (95%)** | retrieved context contains the expected facts (offline, no model) |
-| Answer accuracy | **38 / 40 (95%)** | the model's answer contains the expected facts |
-| Correct "I don't know" | **6 / 6 (100%)** | unanswerable questions answered with "I don't have that" |
-| False "I don't know" | **1 / 40** | answerable questions answered with an "I don't have..." opening (see note below) |
-| Investment advice refused | **24 / 24** | tuned-on 6/6, seen-while-tuning 10/10, **held-out 8/8** |
-| False refusals | **0 / 62** | factual questions wrongly refused |
-| Answers citing a passage `[n]` | **39 / 39** | 0 answers with a citation number that does not exist |
-| Cited passages contain the facts | **37 / 38** | of fact-correct answers that cite: the cited passage really holds the fact |
-
-By group, answers: fact lookups 22/23, country and comparison 8/8, paraphrases 5/6, boundary 3/3.
-
-**The advice guardrail, honestly.** The regex layer alone refuses only the phrasings it was written for: offline it catches
-6/6 of the questions it was tuned on but just 1/10 and 2/8 on two fresh sets (I tuned until the first fresh set passed, then
-wrote the second set after freezing the design). The model layer is what generalizes: together they refused 24/24, including
-all 8 held-out questions, with no false refusals. Eight held-out questions is a small sample, and the model layer relies on a
-free model following the marker instruction.
-
-**Lead handoff (buy-intent detection).** 14 phrasings that should show the contact card ("I want to buy a villa in Muscat",
-"Could I come and see the show apartment?"), 6 written while building the regex and 8 fresh ones written afterwards, and
-8 near-miss questions that must not ("What is DarGlobal's sales office address in Riyadh?"). Live, 2026-11-19:
-
-| | Regex layer alone (offline) | Whole system (live) |
-|---|---|---|
-| Phrasings written while building the regex | 6 / 6 | 6 / 6 |
-| **Held-out phrasings** | **0 / 8** | **5 / 8** |
-| False cards on other questions | 0 / 94 | 0 / 24 (the near-misses plus 16 factual questions) |
-
-The model layer is what generalizes, as with the advice guardrail, but it is not perfect: it missed *"put down a deposit on a
-unit"*, *"sign up to get on the list"* and *"I'm ready to move forward with an apartment"*. I did not add patterns for these (they
-would turn the held-out set into training data); a missed card costs little because the Enquire button is always there. Run just
-this group with `python eval/run_eval.py --url <app> --only v6,v7,v8 --out eval/results_handoff.json`; results are in
-`eval/results_handoff.json`.
-
-**What hybrid retrieval and metadata changed** (retrieval hit rate on the same 37 questions, offline):
-
-| | BM25 only | Hybrid + metadata |
-|---|---|---|
-| All questions | 32 / 37 (86%) | **35 / 37 (95%)** |
-| Fact lookups | 22 / 23 | 22 / 23 |
-| Country and comparison | 6 / 8 | 7 / 8 |
-| Paraphrases | 4 / 6 | **6 / 6** |
-| Comparison questions retrieving both companies | 0 / 3 | **3 / 3** |
-| Retrieved chunks tagged with the asked country | 97% | 100% |
-
-Honest reading: the embeddings alone are weak (18/23 on fact lookups, 2/6 on paraphrases; a larger 32M model was both worse
-and too big for the instance), so the gain comes from blending them with BM25. Metadata is what makes comparisons work.
-The first useful chunk ranks slightly lower with the hybrid (mean reciprocal rank 0.76 vs 0.78): coverage improved, ordering
-did not. The new question groups were written before tuning, but 43 questions is a small set and the blend weight (0.6) was
-picked between 0.5 and 0.8, not fine-tuned.
-
-**Known failures:** *"Which brands partner with DarGlobal?"* (the brand list sits in a chunk with unrelated text and the page
-says "partnered", not "partner"; the answer names only Lamborghini) and *"Who runs DarGlobal day to day?"* (it says the excerpts
-don't say, though they name the CEO, so it is also the one false "I don't know"). *"Can a foreigner own a home in Riyadh?"*
-failed in an earlier run, answering from DarGlobal's page on foreign buyers instead of Wasalt's (the question names no
-company), and passed in this one: free-model answers vary between runs. Earlier experiments with smaller chunks and a suffix
-stemmer gave no net gain on keyword retrieval alone.
-
-Note on "I don't know" detection: the first live run flagged one answerable question (the Oman project list) as an "I don't know",
-because it opened "I don't have a complete list..." and then listed real projects, so its sources were hidden. The detector
-(`is_unknown` in `app/retrieval.py`) now only counts a denial in the *first sentence* and treats a partial admission
-("complete", "full", "exhaustive", "comprehensive") as an answer, which keeps its sources. This changes how the answer is
-classified, not what the model said: the same saved answers were re-scored (still 6/6 correct on unanswerable questions) and only that
-one answer changed.
-
-    python eval/run_eval.py --retrieval-only                      # free, no model calls
-    python eval/run_eval.py --url https://<your-app>.onrender.com  # full run; --resume reuses cached answers
-
-Caveats: the check is "expected facts are present", so it does not penalise extra or loosely worded content; the free model
-is non-deterministic, so rerunning can shift individual results. Full per-question output is in `eval/results.json`. A full
-run makes roughly 60 model requests, more than the free OpenRouter tier's ~50 a day, so it needs an account with credit.
-
-## Limitations
-- **Wasalt coverage is partial**: no live listings or prices beyond the copied snapshot, and no detailed policies. Counts
-  come from a sitemap snapshot and are not live inventory. Questions outside this data get an "I don't have that" answer.
-- **DarGlobal data is refreshed weekly, but its site has bot protection**: blocked pages keep their previous copy rather than being re-scraped (see Data freshness). Some pages render identical project lists, which are de-duplicated.
-- **Free models**: OpenRouter's free tier allows roughly 50 requests/day without credit (about 1,000 after a one-time
-  $10 top-up), models rotate and replies can be slow or occasionally empty. The app falls back across models, retries
-  once, and degrades to showing the retrieved passages with a clear message (see Resilience). Free model IDs change
-  often; if one is removed it is skipped, and the chain can be changed with the environment variables above.
-- **Enquiries stay with this demo**: the form saves to the demo's own database (and webhook, if set); it does not reach
-  DarGlobal or Wasalt, and the UI says so. A production bot would post leads to the company's CRM instead. The in-memory
-  rate limiter and the single admin token are fine for a small instance, not for a public service at scale.
-- **Advice guardrail**: the regex layer is brittle by itself (see Evaluation); the model layer depends on a free model
-  following the marker instruction, so an unusual phrasing can still slip through to a normal answer.
-- Retrieval blends keywords with small static embeddings, so a page that only mentions a term in passing can still appear as a source. Country and page-type tags are keyword heuristics, not hand-labelled.
-- Answers are informational and not investment advice.
+Locally: `python tests/test_build_meta.py` (13 checks), `python tests/test_resilience.py` (23), `python tests/test_leads_logging.py`
+(39), `python eval/run_eval.py --retrieval-only --min-retrieval 0.9`, `scripts/smoke_container.sh <image>`. The full eval
+(`python eval/run_eval.py --url <app>`) needs about 60 model requests, more than the free tier allows per day, so it is not
+in CI. A separate scheduled workflow (`refresh-data.yml`) refreshes the data weekly.
