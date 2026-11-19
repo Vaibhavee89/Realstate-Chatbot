@@ -51,6 +51,22 @@ main{display:flex;flex-direction:column;min-height:0;min-width:0}
 .cite button{all:unset;cursor:pointer;color:var(--bronze)}.cite button:hover{color:var(--champagne)}
 .bot .body.streaming>*:last-child:not(ul)::after,.bot .body.streaming>ul:last-child>li:last-child::after{content:'▍';color:var(--champagne);margin-left:2px;animation:blink 1s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
+.ref{display:inline-block;min-width:16px;padding:0 4px;margin:0 2px;border:1px solid rgba(197,168,128,.5);border-radius:3px;color:var(--champagne);font:600 10px/15px var(--sans);vertical-align:super;cursor:pointer;text-align:center;user-select:none}
+.ref:hover{background:var(--champagne);color:#0b0b0b}
+details.grounding{margin-top:16px;border-top:1px solid rgba(140,122,107,.25);padding-top:12px}
+details.grounding summary{cursor:pointer;color:var(--bronze);font:600 11px/16px var(--sans);letter-spacing:.14em;text-transform:uppercase;list-style:none}
+details.grounding summary::-webkit-details-marker{display:none}
+details.grounding summary::before{content:'▸';margin-right:8px;color:var(--champagne)}
+details.grounding[open] summary::before{content:'▾'}
+details.grounding summary:hover{color:var(--champagne)}
+.psg{margin-top:10px;padding:12px 14px;background:var(--elevated);border-left:2px solid var(--bronze);border-radius:3px;scroll-margin:90px;transition:border-color .2s,box-shadow .2s}
+.psg.hit{border-left-color:var(--gold);box-shadow:0 0 0 1px rgba(212,175,55,.4)}
+.psg .meta{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;color:var(--bronze);font:600 10px/16px var(--sans);letter-spacing:.12em;text-transform:uppercase}
+.psg .meta b{color:var(--champagne)}
+.psg .meta a{color:var(--bronze);text-transform:none;letter-spacing:0;font-weight:400;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.psg .txt{margin-top:8px;font-size:13px;line-height:20px;color:var(--stone);opacity:.92;max-height:150px;overflow:auto;white-space:pre-wrap}
+.bot.refusal .body{border-color:rgba(212,175,55,.5)}
+.guard{margin-top:14px;color:var(--gold);font:600 10px/16px var(--sans);letter-spacing:.14em;text-transform:uppercase}
 .note{color:var(--bronze);font-size:12px;margin-top:10px}
 .status{margin-left:12px;color:var(--bronze);font:600 11px/16px var(--sans);letter-spacing:.14em;text-transform:uppercase;vertical-align:middle}
 .typing{display:inline-flex;gap:5px}.typing i{width:6px;height:6px;border-radius:50%;background:var(--champagne);animation:b 1.2s infinite}
@@ -146,8 +162,8 @@ const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&qu
 const now=()=>new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
 const site=u=>{try{return new URL(u).hostname.replace('www.','')}catch(e){return ''}};
 
-function md(t){
-  let h=esc(t).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/^#{1,4}\s*(.+)$/gm,'<h3>$1</h3>');
+function md(t,nmax){   /* nmax: how many passages exist; citations [n] beyond it are dropped, null while streaming */
+  let h=esc(t).replace(/\s?\[(\d{1,2})\]/g,(m,n)=>(nmax==null||+n<=nmax)?`<span class="ref" data-n="${n}" title="Show passage ${n}">${n}</span>`:'').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/^#{1,4}\s*(.+)$/gm,'<h3>$1</h3>');
   const out=[];let list=false;
   for(const line of h.split('\n')){
     const m=line.match(/^\s*[-*•]\s+(.*)/)||line.match(/^\s*\d+[.)]\s+(.*)/);
@@ -156,6 +172,7 @@ function md(t){
   }
   if(list)out.push('</ul>');return out.join('');
 }
+const plain=s=>s.replace(/\s?\[\d{1,2}\]/g,'');   /* answer text without citation markers (history, copy) */
 function msg(kind,html,extra=''){
   const d=document.createElement('div');d.className=kind;
   d.innerHTML=kind==='bot'
@@ -170,11 +187,29 @@ function reset(){hist=[];log.innerHTML='';srcs.hidden=true;welcome()}
 function ask(t){q.value=t;f.requestSubmit()}
 SUGGEST.forEach(t=>{const s=document.createElement('span');s.textContent=t;s.onclick=()=>ask(t);chips.appendChild(s)});
 
+function showPassages(w,done){
+  const ps=done&&done.passages;if(!(ps&&ps.length))return;
+  const d=document.createElement('details');d.className='grounding';
+  const label=done.unknown?`What I searched · ${ps.length} passage${ps.length>1?'s':''}, none answered the question`:`Retrieved passages (${ps.length})`;
+  d.innerHTML=`<summary>${label}</summary>`+ps.map(p=>
+    `<div class="psg" data-n="${p.n}"><div class="meta"><b>[${p.n}] ${esc(p.company)}</b><span>${esc(p.page_type)} page</span>`+
+    (p.countries.length?`<span>${esc(p.countries.join(', '))}</span>`:'')+
+    `<a href="${esc(p.url)}" target="_blank" rel="noopener" title="${esc(p.title||p.url)}">${esc(site(p.url))}${esc(p.url.replace(/^https?:\/\/[^/]+/,'').slice(0,60))}</a></div><div class="txt">${esc(p.text)}</div></div>`).join('');
+  w.appendChild(d);
+}
+document.addEventListener('click',e=>{   /* clicking a [n] chip opens the passages and highlights passage n */
+  const r=e.target.closest('.ref');if(!r)return;
+  const body=r.closest('.body'),d=body&&body.querySelector('details.grounding');if(!d)return;
+  d.open=true;const p=d.querySelector(`.psg[data-n="${r.dataset.n}"]`);if(!p)return;
+  d.querySelectorAll('.psg.hit').forEach(x=>x.classList.remove('hit'));p.classList.add('hit');
+  p.scrollIntoView({behavior:'smooth',block:'nearest'});setTimeout(()=>p.classList.remove('hit'),2500);
+});
+
 function showSources(w,sources,answer){
   if(!(sources&&sources.length)){srcs.hidden=true;return}
   const c=document.createElement('div');c.className='cite caps';
   c.innerHTML='Sources: '+sources.map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener" title="${esc(x.title)}">${esc(site(x.url))}</a>`).join('')+'<button>Copy</button>';
-  c.querySelector('button').onclick=ev=>{navigator.clipboard&&navigator.clipboard.writeText(answer);ev.target.textContent='Copied'};
+  c.querySelector('button').onclick=ev=>{navigator.clipboard&&navigator.clipboard.writeText(plain(answer));ev.target.textContent='Copied'};
   w.appendChild(c);
   srclist.innerHTML=sources.map(x=>`<a class="src" href="${esc(x.url)}" target="_blank" rel="noopener"><span class="tag caps">${/wasalt/.test(x.url)?'Wasalt':'DarGlobal'}</span><span class="t">${esc(x.title)}</span><span class="u">${esc(x.url)}</span></a>`).join('');
   srcs.hidden=false;
@@ -207,7 +242,7 @@ async function streamAnswer(m,w){
   }
   if(raf)cancelAnimationFrame(raf);
   w.classList.remove('streaming');
-  if(text)w.innerHTML=md(text);
+  if(text)w.innerHTML=md(text,done&&done.passages?done.passages.length:null);
   return {text,error,done};
 }
 
@@ -221,7 +256,13 @@ f.onsubmit=async e=>{
       if(text){const n=document.createElement('p');n.className='note';n.textContent=error;w.appendChild(n)}else w.textContent=error;
       srcs.hidden=true;
     }else if(!text){w.textContent='No reply received. Please try again.';srcs.hidden=true}
-    else{showSources(w,done&&done.sources,text);hist.push({role:'user',content:m},{role:'assistant',content:text})}
+    else if(done&&done.refused){   /* investment-advice guardrail: no sources or passages, just the disclaimer */
+      w.parentElement.classList.add('refusal');srcs.hidden=true;
+      const g=document.createElement('div');g.className='guard';g.textContent='Guardrail · investment advice declined';w.appendChild(g);
+    }else{
+      showSources(w,done&&done.sources,text);showPassages(w,done);
+      hist.push({role:'user',content:m},{role:'assistant',content:plain(text)});
+    }
   }catch(err){w.textContent='Network error, please retry.'}
   go.disabled=false;log.scrollTop=log.scrollHeight;q.focus();
 };
