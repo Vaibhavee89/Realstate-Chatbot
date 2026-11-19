@@ -1,48 +1,80 @@
 # DarGlobal & Wasalt Assistant
 
-RAG chatbot over publicly scraped data from darglobal.co.uk and wasalt.sa (wasalt.com redirects there).
-Stack: FastAPI + BM25 retrieval + OpenRouter free model (`openrouter/free`), Docker, deployed on Render.
+A retrieval-augmented chatbot that answers questions about two real-estate companies, **DarGlobal** (darglobal.co.uk)
+and **Wasalt** (wasalt.sa), using publicly available website data. Answers cite their source pages and say so when the
+data does not contain the answer.
 
-**Live demo:** https://realestate-chatbot-bzc7.onrender.com
-(Render free tier: the first load can take 30-60s while the instance wakes, and answers can be slow because they use a free OpenRouter model.)
+**Live demo: https://realestate-chatbot-bzc7.onrender.com**
+(Render free tier: the first load can take 30-60 s while the instance wakes. Replies take a few seconds to ~30 s
+because they use a free OpenRouter model.)
+
+Try: *"What projects does DarGlobal have in Oman?"*, *"Who are DarGlobal's brand partners?"*,
+*"What is the Astera by Aston Martin?"*, *"What is Wasalt?"*, *"How many villas for sale does Wasalt list?"*,
+*"What is the cheapest project on Wasalt?"*, *"Can foreigners buy property in Riyadh according to Wasalt?"*
+
+## How it works
+1. **Data** (`data/*.jsonl`, one page per line: `site`, `url`, `title`, `text`) is split into ~900-character chunks at startup;
+   identical chunks are dropped.
+2. **Retrieval** is BM25 over chunk title + URL words + text. Filler words are ignored, a question naming only one company
+   is restricted to that company's data, weak matches are cut, and at most two chunks per page are used.
+3. **Generation**: the top chunks go to an OpenRouter free model (`openrouter/free`) with an instruction to answer only from
+   the excerpts. Sources are shown, but not for "I don't know" answers.
+4. **Serving**: FastAPI (`app/main.py`) with a single-page UI (`app/static/index.html`), packaged with Docker.
 
 ## 1. Data collection
-**DarGlobal** - crawled from darglobal.co.uk (120 public pages: projects, press, insights, one-of-one):
+**DarGlobal** - crawled from darglobal.co.uk: 120 public pages (projects, partners, press releases, insights, FAQ).
 
     pip install -r requirements-scraper.txt
     python scraper/scrape.py --site dar
-Polite: robots.txt respected, 1s delay, page cap; challenge pages are skipped, never bypassed.
+robots.txt is respected, requests are rate-limited (1 s), and challenge pages are skipped, never bypassed.
 Output: `data/pages.jsonl`.
 
-**Wasalt** - wasalt.sa is behind a Cloudflare interactive challenge (HTTP 403 to automated clients), which I did
-not bypass, so page content could not be scraped. Instead, `scraper/wasalt_sitemap.py` builds a catalog from Wasalt's
-public sitemaps (listed in its robots.txt, served unchallenged from cdn.wasalt.sa):
+**Wasalt** - wasalt.sa sits behind a Cloudflare interactive challenge (HTTP 403 for automated clients). This was **not
+bypassed**, so Wasalt's pages could not be scraped automatically. Wasalt data therefore comes from two other public sources:
 
-    python scraper/wasalt_sitemap.py
-Output: `data/wasalt_catalog.jsonl` - aggregate counts (60,000 listings by type, sale/rent, bedrooms; ~8,500
-category pages by city) plus sample listings, derived from URL slugs only. Limitations: it is a snapshot, not live
-inventory; listing sizes in slugs are unreliable and omitted; no prices or descriptions.
-Company information and a sample of Riyadh prices come from the manually added pages below; the bot cannot answer
-Wasalt questions about current prices outside that sample, or detailed policies.
-Manually added (copied by hand from the public page in a browser, since automated access is blocked):
-`data/wasalt_manual.jsonl` holds 9 cleaned documents from three public pages: https://wasalt.sa/en (about and
-licences, services, FAQ topics; FAQ answers not captured), https://wasalt.sa/en/properties-for-sale-in-riyadh (Riyadh
-buying guide, sample listings with prices, featured projects and auctions) and the projects-for-sale search
-(25 projects with price ranges and units available; unit-detail columns were unlabelled and omitted). All are
-snapshots, not live; two listings with implausible prices were omitted; prices are as displayed (currency not stated on
-the project page). More pages can be added in the same format
-(`{"site":"wasalt","url":...,"title":...,"text":...}` per line).
+1. **Sitemap catalog** (automated): Wasalt's public sitemaps (listed in its robots.txt and served unchallenged from
+   cdn.wasalt.sa) are turned into aggregate summaries by `scraper/wasalt_sitemap.py`.
+
+       python scraper/wasalt_sitemap.py
+   Output: `data/wasalt_catalog.jsonl` - 13 documents: counts of the ~60,000 listed properties by type, sale/rent and
+   bedrooms; ~8,500 category pages by city; and sample listings. It uses URL slugs only, so it has no prices or
+   descriptions, and listing sizes are omitted because slug values are unreliable.
+2. **Manually copied public pages**: three pages were opened in a normal browser and their visible text was copied and
+   cleaned by hand into `data/wasalt_manual.jsonl` (9 documents):
+   - https://wasalt.sa/en - about, licences, services, FAQ topics (FAQ answers were not captured).
+   - https://wasalt.sa/en/properties-for-sale-in-riyadh - Riyadh buying guide, sample listings with prices, featured
+     projects and auctions.
+   - the projects-for-sale search - 25 projects with price ranges and units available.
+
+   These are snapshots, not live data. Two listings with implausible prices were left out, unlabelled unit-detail columns
+   were omitted, and the project page does not state a currency, so prices are given "as displayed". More pages can be
+   added in the same format (`{"site":"wasalt","url":...,"title":...,"text":...}` per line).
 
 ## 2. Run locally
     docker build -t realestate-bot .
-    docker run -p 8000:8000 -e OPENROUTER_API_KEY=sk-or-... realestate-bot
-Open http://localhost:8000
+    docker run -d --name rebot -p 8010:8000 -e OPENROUTER_API_KEY=<your-key> realestate-bot
+Open http://localhost:8010 (use any free host port). Without `-d`, stop it with Ctrl+C; with it, `docker rm -f rebot`.
+Health check: `GET /health` returns the model name and number of chunks loaded.
+
+Without Docker: `pip install -r requirements.txt && OPENROUTER_API_KEY=<your-key> uvicorn app.main:app --port 8000`.
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `OPENROUTER_API_KEY` | required, from openrouter.ai | - |
+| `OPENROUTER_MODEL` | model ID | `openrouter/free` |
+| `OPENROUTER_FALLBACKS` | comma-separated extra `:free` model IDs | none |
+| `PORT` | listen port (set by Render) | `8000` |
 
 ## 3. Deploy (Render, free)
-Push to GitHub -> Render > New > Blueprint (uses render.yaml) -> set `OPENROUTER_API_KEY` secret -> deploy.
-Free instances sleep after idle, so open the URL once before sharing.
+Push to GitHub -> Render > New > Blueprint (reads `render.yaml`) -> set the `OPENROUTER_API_KEY` secret -> deploy.
+Later pushes to `main` redeploy automatically. Never commit the key (`.env` is git-ignored).
 
-## Notes
-- OpenRouter free tier ~50 requests/day without a top-up; free models rotate. Optionally set
-  `OPENROUTER_FALLBACKS=model-a:free,model-b:free`.
-- Answers are grounded in retrieved excerpts, cite sources, and say "I don't know" otherwise.
+## Limitations
+- **Wasalt coverage is partial**: no live listings or prices beyond the copied snapshot, and no detailed policies. Counts
+  come from a sitemap snapshot and are not live inventory. Questions outside this data get an "I don't have that" answer.
+- **DarGlobal data is a point-in-time crawl**; some pages render identical project lists, which are de-duplicated.
+- **Free model**: OpenRouter's free tier allows roughly 50 requests/day without credit, models rotate, and replies can be
+  slow or occasionally empty (the app retries). Errors show the real OpenRouter status code (429 = daily limit,
+  401 = bad key, 402 = no credits).
+- Retrieval is keyword-based (BM25), so a page that only mentions a term in passing can still appear as a source.
+- Answers are informational and not investment advice.
