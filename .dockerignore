@@ -6,3 +6,4 @@ data/index
 eval
 docs
 tests
+data/.scrape_report.json

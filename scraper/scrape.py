@@ -18,6 +18,7 @@ import requests
 from bs4 import BeautifulSoup
 
 OUT = Path(__file__).resolve().parent.parent / "data" / "pages.jsonl"
+REPORT = OUT.with_name(".scrape_report.json")  # read by scraper/build_meta.py; not committed
 UA = "Mozilla/5.0 (compatible; AssignmentBot/1.0; educational use)"
 DELAY = 1.0
 
@@ -26,7 +27,7 @@ SITES = {
         "base": "https://darglobal.co.uk",
         "seeds": ["/", "/about", "/projects", "/press", "/why-invest", "/investor", "/faq",
                   "/blog", "/insights", "/hospitality", "/commercial", "/tokenization",
-                  "/luxury-golf-communities", "/exclusive-membership", "/get-in-touch",
+                  "/luxury-golf-communities", "/exclusive-membership", "/get-in-touch", "/partners", "/one-of-one",
                   "/projects/properties-in-uae", "/projects/properties-in-uk",
                   "/projects/properties-in-spain", "/projects/properties-in-oman",
                   "/projects/properties-in-qatar", "/projects/properties-in-saudi-arabia"],
@@ -41,7 +42,8 @@ SITES = {
     },
 }
 
-BLOCK_MARKERS = ("Just a moment", "Performing security verification", "Attention Required")
+BLOCK_MARKERS = ("Just a moment", "Performing security verification", "Attention Required",
+                 "_Incapsula_Resource", "Incapsula incident")  # Cloudflare / Imperva bot challenges: skipped, never bypassed
 
 
 def clean(html: str):
@@ -83,7 +85,7 @@ def crawl(key, cfg, get):
         rp.parse([])
     follow = re.compile(cfg["follow"])
     queue = [urljoin(base, s) for s in cfg["seeds"]]
-    seen, pages = set(), []
+    seen, pages, failed = set(), [], {}   # failed: url -> reason (blocked / error / empty); used to keep the old copy
     while queue and len(pages) < cfg["max_pages"]:
         url = urldefrag(queue.pop(0))[0].rstrip("/") or base
         if url in seen: continue
@@ -94,12 +96,13 @@ def crawl(key, cfg, get):
         try:
             status, html = get(url)
         except Exception as e:
-            print("ERR", url, e); continue
+            print("ERR", url, e); failed[url] = f"error: {type(e).__name__}"; continue
         time.sleep(DELAY)
         if status >= 400 or any(m in html[:3000] for m in BLOCK_MARKERS):
-            print(f"SKIP {status} (blocked/challenge) {url}"); continue
+            print(f"SKIP {status} (blocked/challenge) {url}"); failed[url] = f"http {status} / bot challenge"; continue
         title, text, soup = clean(html)
-        if len(text) < 200: continue
+        if len(text) < 200:
+            print(f"SKIP empty ({len(text)} chars) {url}"); failed[url] = "empty page"; continue
         pages.append({"site": key, "url": url, "title": title, "text": text})
         print(f"OK  [{len(pages)}] {url} ({len(text)} chars)")
         for a in soup.find_all("a", href=True):
@@ -107,7 +110,7 @@ def crawl(key, cfg, get):
             pu = urlparse(link)
             if pu.netloc == host and follow.match(pu.path) and link not in seen:
                 queue.append(link)
-    return pages
+    return pages, failed
 
 
 if __name__ == "__main__":
@@ -116,15 +119,26 @@ if __name__ == "__main__":
     ap.add_argument("--playwright", action="store_true")
     a = ap.parse_args()
     get, close = make_fetcher(a.playwright)
-    allp = []
+    allp, failed = [], {}
     for k in (["dar", "wasalt"] if a.site == "both" else [a.site]):
-        allp += crawl(k, SITES[k], get)
+        pages, f = crawl(k, SITES[k], get)
+        allp += pages
+        failed.update(f)
     close()
     if not allp:
         sys.exit("No pages scraped. For Wasalt try --playwright; if still blocked, see README.")
     OUT.parent.mkdir(exist_ok=True)
-    # merge with existing (so a DarGlobal-only run doesn't drop Wasalt data)
     old = [json.loads(l) for l in OUT.read_text(encoding="utf-8").split("\n") if l.strip()] if OUT.exists() else []
-    keep = [o for o in old if o["site"] not in {p["site"] for p in allp}]
-    OUT.write_text("\n".join(json.dumps(p, ensure_ascii=False) for p in keep + allp))
-    print(f"Wrote {len(keep)+len(allp)} pages -> {OUT}")
+    sites = {p["site"] for p in allp}
+    keep = [o for o in old if o["site"] not in sites]  # a DarGlobal-only run must not drop Wasalt data
+    # Stale-while-revalidate: a page that was blocked (bot challenge) or failed THIS time keeps its previous copy, so a
+    # transient block cannot delete the homepage. Pages that are merely no longer linked are NOT kept.
+    got = {p["url"] for p in allp}
+    carried = [o for o in old if o["site"] in sites and o["url"] in failed and o["url"] not in got]
+    OUT.write_text("\n".join(json.dumps(p, ensure_ascii=False) for p in keep + allp + carried))
+    REPORT.write_text(json.dumps({"fetched": len(allp), "carried_over": [o["url"] for o in carried],
+                                  "failed": failed}, indent=1))
+    print(f"Wrote {len(keep)+len(allp)+len(carried)} pages -> {OUT} "
+          f"({len(allp)} fetched, {len(carried)} kept from the previous crawl because they were blocked or failed)")
+    for o in carried:
+        print("  kept previous copy:", o["url"], "-", failed[o["url"]])

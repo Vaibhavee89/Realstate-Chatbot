@@ -116,8 +116,37 @@ Without Docker: `pip install -r requirements.txt && python -m app.build_index &&
 Push to GitHub -> Render > New > Blueprint (reads `render.yaml`) -> set the `OPENROUTER_API_KEY` secret -> deploy.
 Later pushes to `main` redeploy automatically. Never commit the key (`.env` is git-ignored).
 
+## Data freshness
+A scheduled GitHub Action (`.github/workflows/refresh-data.yml`, Mondays 03:17 UTC, or run it by hand from the Actions tab)
+keeps the data from going stale:
+
+1. re-crawls DarGlobal (`scraper/scrape.py`) and rebuilds the Wasalt catalog from its public sitemaps
+   (`scraper/wasalt_sitemap.py`);
+2. validates the result and writes `data/meta.json` (`scraper/build_meta.py`): scrape date, date the content last changed,
+   counts, and what changed (pages added / removed / modified);
+3. commits only if something changed, and pushing to `main` redeploys on Render, whose Docker build re-embeds the data.
+
+The UI shows **"Data last updated 18 Nov 2026"** (and the page and listing counts, which also come from `meta.json`), turns
+amber with "data may be out of date" after 30 days, and `GET /api/meta` returns the record. The few Wasalt pages copied by hand
+(`data/wasalt_manual.jsonl`) are not auto-refreshed.
+
+**It refuses to publish bad data** (exit 1, nothing committed, the workflow goes red): if DarGlobal pages or Wasalt listings
+drop below 80% of the last run, if any of five key pages (homepage, investor, FAQ, contact, Aston Martin partner page) is
+missing or nearly empty, or if more than half the crawl is stale copies. Tested in `tests/test_build_meta.py` (13 checks, no
+network).
+
+**What building it found.** Testing the job locally, a second crawl lost the DarGlobal homepage and 25 other pages. The
+site's bot protection (Imperva/Incapsula) had started answering the crawler with a near-empty challenge page, which the
+crawler did not recognise, so it skipped the homepage silently and everything only linked from it vanished; an 80% safety
+threshold alone would have let that through (105 of 120 pages). Fixes: challenge pages are now recognised and logged, and a
+page that was blocked or failed keeps its **previous copy** (the count is recorded in `meta.json` and shown in the UI),
+`/partners` and `/one-of-one` are seeded so key pages do not depend on the homepage's links, and the key-page and
+stale-share checks above were added. The challenge is not bypassed (same policy as Wasalt). GitHub's datacenter IPs may well
+be challenged more than a home connection; if so the job will fail loudly instead of publishing a degraded dataset, and the
+UI's date simply goes stale and then amber.
+
 ## Tests
-`python tests/test_resilience.py` runs 23 checks with no API key and no network: it starts a fake OpenRouter
+`python tests/test_build_meta.py` (13 checks) covers the data-freshness validation, and `python tests/test_resilience.py` runs 23 checks with no API key and no network: it starts a fake OpenRouter
 (`tests/fake_openrouter.py`) and the app, injects failures (busy model, empty reply, whole chain down, quota used up,
 bad key, break mid-answer) and asserts which models were tried, that exactly one retry happens, that the user-facing
 message is calm, and that passages are still returned, on both the streaming and JSON endpoints. It also checks the
@@ -194,7 +223,7 @@ run makes roughly 60 model requests, more than the free OpenRouter tier's ~50 a 
 ## Limitations
 - **Wasalt coverage is partial**: no live listings or prices beyond the copied snapshot, and no detailed policies. Counts
   come from a sitemap snapshot and are not live inventory. Questions outside this data get an "I don't have that" answer.
-- **DarGlobal data is a point-in-time crawl**; some pages render identical project lists, which are de-duplicated.
+- **DarGlobal data is refreshed weekly, but its site has bot protection**: blocked pages keep their previous copy rather than being re-scraped (see Data freshness). Some pages render identical project lists, which are de-duplicated.
 - **Free models**: OpenRouter's free tier allows roughly 50 requests/day without credit (about 1,000 after a one-time
   $10 top-up), models rotate and replies can be slow or occasionally empty. The app falls back across models, retries
   once, and degrades to showing the retrieved passages with a clear message (see Resilience). Free model IDs change

@@ -1,4 +1,5 @@
 import json, os
+from datetime import date
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -36,9 +37,32 @@ class Chat(BaseModel):
     history: list[dict] = []
 
 
+STALE_DAYS = 30  # warn in the UI when the data is older than this
+
+
+def data_meta():
+    """the data-freshness record written by scraper/build_meta.py (None if the file is missing)"""
+    f = ROOT / "data" / "meta.json"
+    if not f.exists():
+        return None
+    meta = json.loads(f.read_text())
+    try:
+        age = (date.today() - date.fromisoformat(meta["scraped_at"])).days
+    except (KeyError, ValueError):
+        age = None
+    return {**meta, "age_days": age, "stale": age is not None and age > STALE_DAYS}
+
+
+@app.get("/api/meta")
+def meta():
+    return data_meta() or {}
+
+
 @app.get("/health")
 def health():
-    return {"ok": True, "chunks": len(CHUNKS), "models": llm.CHAIN, "embeddings": retrieval.EMB is not None}
+    m = data_meta() or {}
+    return {"ok": True, "chunks": len(CHUNKS), "models": llm.CHAIN, "embeddings": retrieval.EMB is not None,
+            "data_scraped_at": m.get("scraped_at")}
 
 
 def build(req):

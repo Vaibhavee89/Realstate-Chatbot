@@ -1,0 +1,21 @@
+{
+ "scraped_at": "2026-11-18",
+ "changed_at": "2026-11-18",
+ "dar_pages": 120,
+ "wasalt_listings": 60000,
+ "wasalt_catalog_docs": 13,
+ "wasalt_manual_docs": 9,
+ "carried_over": 0,
+ "carried_since": {},
+ "content_hash": "6641ea290698d3141153f8da2ab01d4f27fd5b635e69ecb7fc47b9e19e355ffd",
+ "last_change": {
+  "added": 0,
+  "removed": 0,
+  "modified": 0
+ },
+ "sources": {
+  "dar": "darglobal.co.uk (crawled)",
+  "wasalt_catalog": "wasalt.sa public sitemaps",
+  "wasalt_manual": "copied by hand from public pages; not auto-refreshed"
+ }
+}

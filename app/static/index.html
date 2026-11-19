@@ -73,6 +73,9 @@ details.grounding summary:hover{color:var(--champagne)}
 .notice button:hover{background:var(--champagne);color:#0b0b0b}
 .notice small{color:var(--bronze);font-size:11px}
 .mdl{color:var(--bronze);text-transform:none;letter-spacing:0;font-weight:400}
+.fresh{margin:0 0 12px;color:var(--bronze);font:600 10px/16px var(--sans);letter-spacing:.14em;text-transform:uppercase;display:flex;align-items:center;gap:8px}
+.fresh i{flex:none;width:7px;height:7px;border-radius:50%;background:var(--champagne)}
+.fresh.stale{color:var(--gold)}.fresh.stale i{background:var(--gold);box-shadow:0 0 8px var(--gold)}
 .note{color:var(--bronze);font-size:12px;margin-top:10px}
 .status{margin-left:12px;color:var(--bronze);font:600 11px/16px var(--sans);letter-spacing:.14em;text-transform:uppercase;vertical-align:middle}
 .typing{display:inline-flex;gap:5px}.typing i{width:6px;height:6px;border-radius:50%;background:var(--champagne);animation:b 1.2s infinite}
@@ -138,7 +141,7 @@ input::placeholder{color:rgba(237,232,225,.4)}
   <div id="log"></div>
   <div class="chipwrap"><div class="caps lbl">Suggested inquiries</div><div class="chips" id="chips"></div></div>
   <form id="f"><div class="box"><input id="q" placeholder="Ask about projects, partners, listings…" autocomplete="off" required></div><button class="send" id="go">Send</button></form>
-  <div class="foot caps">Free-tier model · may be slow at peak times · not investment advice</div>
+  <div class="foot caps">Free-tier model · may be slow at peak times · not investment advice<span id="foot-date"></span></div>
 </main>
 
 <section class="panel">
@@ -147,9 +150,10 @@ input::placeholder{color:rgba(237,232,225,.4)}
     <h2>What I know</h2>
     <p>I answer from scraped public pages, and say so when I don't have the answer.</p>
     <div class="stats">
-      <div><b>120</b><span class="caps">DarGlobal pages</span></div>
-      <div><b>60,000</b><span class="caps">Wasalt listings*</span></div>
+      <div><b id="n-dar">120</b><span class="caps">DarGlobal pages</span></div>
+      <div><b id="n-was">60,000</b><span class="caps">Wasalt listings*</span></div>
     </div>
+    <div class="fresh" id="fresh" hidden><i></i><span id="fresh-text"></span></div>
     <p class="note">*Wasalt's site blocks automated page access, so its data is a catalog built from public sitemaps (counts by type and city, sample listings) plus a few public pages copied by hand (about, Riyadh listings, projects). Prices are snapshots.</p>
   </div>
   <div class="card" id="srcs" hidden>
@@ -282,5 +286,21 @@ f.onsubmit=async e=>{
   }catch(err){w.textContent='Network error, please retry.'}
   go.disabled=false;log.scrollTop=log.scrollHeight;q.focus();
 };
+
+/* data freshness: numbers and "last updated" date come from data/meta.json (written by the scheduled refresh job) */
+(async()=>{
+  try{
+    const m=await (await fetch('/api/meta')).json();if(!m.scraped_at)return;
+    const fmt=d=>new Date(d+'T00:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
+    if(m.dar_pages)document.getElementById('n-dar').textContent=m.dar_pages.toLocaleString('en-US');
+    if(m.wasalt_listings)document.getElementById('n-was').textContent=m.wasalt_listings.toLocaleString('en-US');
+    const f=document.getElementById('fresh');f.hidden=false;f.classList.toggle('stale',!!m.stale);
+    const kept=m.carried_over?` · ${m.carried_over} page${m.carried_over>1?'s':''} kept from an earlier crawl`:'';
+    const txt=(m.stale?`Data may be out of date · last updated ${fmt(m.scraped_at)} (${m.age_days} days ago)`:`Data last updated ${fmt(m.scraped_at)}`)+kept;
+    document.getElementById('fresh-text').textContent=txt;
+    f.title=`Scraped ${fmt(m.scraped_at)}; content last changed ${fmt(m.changed_at)}.${m.carried_over?` ${m.carried_over} page(s) were blocked by the site's bot protection on the last crawl, so their previous copy is kept.`:''} DarGlobal pages are re-crawled weekly and the Wasalt catalog is rebuilt from its public sitemaps; the few Wasalt pages copied by hand are not auto-refreshed.`;
+    document.getElementById('foot-date').textContent=` · ${m.stale?'data may be out of date, ':''}data updated ${fmt(m.scraped_at)}`;
+  }catch(e){}
+})();
 welcome();
 </script></body></html>
