@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 QUESTIONS = Path(__file__).with_name("questions.json")
 RESULTS = Path(__file__).with_name("results.json")
+TAGS = {"v1": "facts", "v2": "country+comparison", "v3": "paraphrase"}  # question groups
 
 
 def norm(s: str) -> str:
@@ -88,6 +89,8 @@ def main():
     for q in answerable:
         if not ret[q["id"]]["ok"]:
             print(f"  MISS {q['id']}: {q['q']}  groups={ret[q['id']]['groups']}")
+    print("  by group: " + ", ".join(f"{TAGS[t]} {sum(ret[q['id']]['ok'] for q in answerable if q.get('tag') == t)}/"
+                                    f"{sum(1 for q in answerable if q.get('tag') == t)}" for t in TAGS))
     if a.retrieval_only:
         return
 
@@ -137,6 +140,9 @@ def main():
     print(f"Answer accuracy (expected facts present): {acc}/{n_a} = {acc / n_a:.0%}" if n_a else "Answer accuracy: n/a")
     print(f"False 'I don't know' on answerable:       {fidk}/{n_a}" if n_a else "")
     print(f"Correct 'I don't know' on unanswerable:   {idk}/{n_u} = {idk / n_u:.0%}" if n_u else "IDK accuracy: n/a")
+    byq = {q["id"]: q for q in qs}
+    print("  by group: " + ", ".join(f"{TAGS[t]} {sum(r['ok'] for r in ans_rows if byq[r['id']].get('tag') == t)}/"
+                                    f"{sum(1 for r in ans_rows if byq[r['id']].get('tag') == t)}" for t in TAGS))
     for r in ans_rows:
         if not r["ok"]:
             q = next(x for x in qs if x["id"] == r["id"])

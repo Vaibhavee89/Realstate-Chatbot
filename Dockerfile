@@ -1,10 +1,13 @@
 FROM python:3.12-slim
-ENV PYTHONUNBUFFERED=1 PORT=8000
+ENV PYTHONUNBUFFERED=1 PORT=8000 HF_HOME=/srv/hf
 WORKDIR /srv
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY data ./data
+# precompute chunk embeddings and cache the small embedding model inside the image (no network needed at runtime)
+RUN python -m app.build_index && rm -rf /root/.cache
+ENV HF_HUB_OFFLINE=1
 RUN useradd -m app && chown -R app /srv
 USER app
 EXPOSE 8000

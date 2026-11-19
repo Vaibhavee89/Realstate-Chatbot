@@ -2,3 +2,6 @@
 __pycache__
 .env
 scraper
+data/index
+eval
+docs
