@@ -1,0 +1,644 @@
+{
+ "url": "https://realestate-chatbot-bzc7.onrender.com",
+ "retrieval": {
+  "dar-01": {
+   "ok": false,
+   "groups": [
+    false,
+    true,
+    false,
+    true,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "dar-02": {
+   "ok": true,
+   "groups": [
+    true,
+    true
+   ]
+  },
+  "dar-03": {
+   "ok": true,
+   "groups": [
+    true
+   ]
+  },
+  "dar-04": {
+   "ok": true,
+   "groups": [
+    true
+   ]
+  },
+  "dar-05": {
+   "ok": true,
+   "groups": [
+    true,
+    true
+   ]
+  },
+  "dar-06": {
+   "ok": true,
+   "groups": [
+    true
+   ]
+  },
+  "dar-07": {
+   "ok": true,
+   "groups": [
+    true
+   ]
+  },
+  "dar-08": {
+   "ok": true,
+   "groups": [
+    true
+   ]
+  },
+  "dar-09": {
+   "ok": true,
+   "groups": [
+    true
+   ]
+  },
+  "dar-10": {
+   "ok": true,
+   "groups": [
+    true
+   ]
+  },
+  "dar-11": {
+   "ok": true,
+   "groups": [
+    true
+   ]
+  },
+  "dar-12": {
+   "ok": true,
+   "groups": [
+    true
+   ]
+  },
+  "dar-13": {
+   "ok": true,
+   "groups": [
+    true
+   ]
+  },
+  "was-01": {
+   "ok": true,
+   "groups": [
+    true
+   ]
+  },
+  "was-02": {
+   "ok": true,
+   "groups": [
+    true
+   ]
+  },
+  "was-03": {
+   "ok": true,
+   "groups": [
+    true
+   ]
+  },
+  "was-04": {
+   "ok": true,
+   "groups": [
+    true
+   ]
+  },
+  "was-05": {
+   "ok": true,
+   "groups": [
+    true
+   ]
+  },
+  "was-06": {
+   "ok": true,
+   "groups": [
+    true
+   ]
+  },
+  "was-07": {
+   "ok": true,
+   "groups": [
+    true
+   ]
+  },
+  "was-08": {
+   "ok": true,
+   "groups": [
+    true
+   ]
+  },
+  "was-09": {
+   "ok": true,
+   "groups": [
+    true
+   ]
+  },
+  "was-10": {
+   "ok": true,
+   "groups": [
+    true
+   ]
+  }
+ },
+ "answers": {
+  "dar-01": {
+   "status": 200,
+   "answer": "Based on the context provided, DarGlobal partners with the following brands:\n\n*   **Automobili Lamborghini**\n*   **Paramount** (which includes the **Nickelodeon** brand for its hotels and resorts)",
+   "sources": [
+    {
+     "title": "Lamborghini - House of Brands",
+     "url": "https://darglobal.co.uk/partners/lamborghini"
+    },
+    {
+     "title": "DarGlobal | International Luxury Real Estate Developer",
+     "url": "https://darglobal.co.uk"
+    },
+    {
+     "title": "https://darglobal.co.uk/partners/paramount",
+     "url": "https://darglobal.co.uk/partners/paramount"
+    },
+    {
+     "title": "Insights | Real Estate Intelligence & News | DarGlobal",
+     "url": "https://darglobal.co.uk/insights"
+    }
+   ]
+  },
+  "dar-02": {
+   "status": 200,
+   "answer": "**DGCP (Dar Global Capital Partners)** is the **DFSA‑regulated investment management subsidiary of DarGlobal**, headquartered in the Dubai International Financial Centre (DIFC). It operates as DarGlobal’s alternative asset‑management arm, deploying capital across global real‑estate markets (GCC, Europe, UK, US) through equity, debt and hybrid strategies for qualified investors and strategic partners.",
+   "sources": [
+    {
+     "title": "DarGlobal | International Luxury Real Estate Developer",
+     "url": "https://darglobal.co.uk"
+    },
+    {
+     "title": "Dar Global Capital Partners Targets High-Value Real Estate Opportunities in Dubai Across Global Investment Mandate",
+     "url": "https://darglobal.co.uk/press/dar-global-capital-partners-targets-high-value-real-estate-opportunities-dubai"
+    }
+   ]
+  },
+  "dar-03": {
+   "status": 200,
+   "answer": "According to DarGlobal, AIDA in Oman is a joint venture developed by **DarGlobal together with Omran Group (OMRAN)**, the executive arm of the Sultanate of Oman for tourism development.",
+   "sources": [
+    {
+     "title": "Marriott Residences Oman | DarGlobal Branded Living",
+     "url": "https://darglobal.co.uk/partners/marriott-residences-aida-oman"
+    },
+    {
+     "title": "AIDA Properties | Luxury Hilltop Homes in Muscat | DarGlobal",
+     "url": "https://darglobal.co.uk/landing-page/aida"
+    },
+    {
+     "title": "Which developer offers homes eligible for Oman Golden Visa with sea views?",
+     "url": "https://darglobal.co.uk/insights/oman-golden-visa-sea-view-homes"
+    },
+    {
+     "title": "Which developer offers a safe alternative to local private builders in Oman?",
+     "url": "https://darglobal.co.uk/insights/safe-luxury-developer-oman"
+    }
+   ]
+  },
+  "dar-04": {
+   "status": 200,
+   "answer": "DarGlobal partnered with **Aston Martin** for The Astera, Interiors by Aston Martin. (Source: DarGlobal)",
+   "sources": [
+    {
+     "title": "Aston Martin Residences RAK | DarGlobal Branded Living",
+     "url": "https://darglobal.co.uk/partners/aston-martin"
+    },
+    {
+     "title": "DarGlobal Introduces The Astera: Interiors by Aston Martin",
+     "url": "https://darglobal.co.uk/press/dar-global-introduces-stunning-beach-residence-the-astera-interiors-by-aston-martin"
+    },
+    {
+     "title": "Who sells penthouse apartments designed by supercar brands in the UAE?",
+     "url": "https://darglobal.co.uk/insights/supercar-designed-penthouses-uae"
+    },
+    {
+     "title": "Why Branded Residences Outperform Traditional Luxury Homes",
+     "url": "https://darglobal.co.uk/blog/why-branded-residences-outperform-traditional-luxury-homes"
+    }
+   ]
+  },
+  "dar-05": {
+   "status": 200,
+   "answer": "**Tierra Viva** is a **DarGlobal** project located in **Benahavís, Spain** (on the Costa del Sol). Its architectural design is **inspired by Automobili Lamborghini**.",
+   "sources": [
+    {
+     "title": "Lamborghini - House of Brands",
+     "url": "https://darglobal.co.uk/partners/lamborghini"
+    },
+    {
+     "title": "DarGlobal Appoints Ene Construccion Amaz SL as Main Contractor for Tierra Viva – A Luxury Villa Development with Design Inspired by Automobili Lamborghini",
+     "url": "https://darglobal.co.uk/press/darglobal-appoints-ene-construccion-as-main-contractor-for-tierra-viva-luxury-villas"
+    },
+    {
+     "title": "Dar Global advances construction at Tierra Viva, its first European luxury development with Automobili Lamborghini",
+     "url": "https://darglobal.co.uk/press/Dar-Global-advances-construction-at-Tierra-Viva-its-first-European-luxury-development-with-Automobili-Lamborghini"
+    },
+    {
+     "title": "DarGlobal & Lamborghini Present Tierra Viva Villas in Benahavis",
+     "url": "https://darglobal.co.uk/press/exceptional-luxury-living-redefined-darglobal-and-automobili-lamborghini-present-tierra-viva-villas-in-the-highly-exclusive-benahavis"
+    }
+   ]
+  },
+  "dar-06": {
+   "status": 200,
+   "answer": "The Trump Plaza Jeddah project is valued at USD 1 billion, as stated in DarGlobal's press releases. (DarGlobal / The Trump Organization)",
+   "sources": [
+    {
+     "title": "Trump Plaza Jeddah: Dar Global & Trump Organization Launch $1B Mixed-Use Project",
+     "url": "https://darglobal.co.uk/press/darglobal-launches-trump-plaza-jeddah-second-collaboration"
+    },
+    {
+     "title": "DarGlobal and The Trump Organisation Expand Saudi Portfolio With Usd 1BN Trump Plaza Jeddah",
+     "url": "https://darglobal.co.uk/press/dar-global-trump-organization-usd-1bn-trump-plaza-jeddah"
+    },
+    {
+     "title": "Commercial - DARGLOBAL",
+     "url": "https://darglobal.co.uk/commercial"
+    },
+    {
+     "title": "Trump Branded Residences Gulf | DarGlobal Portfolio",
+     "url": "https://darglobal.co.uk/partners/the-trump-organization"
+    }
+   ]
+  },
+  "dar-07": {
+   "status": 200,
+   "answer": "Based on the provided context, the CEO of DarGlobal is **Ziad El Chaar**.",
+   "sources": [
+    {
+     "title": "DarGlobal Awards Enabling Works Contract for Trump Tower Dubai",
+     "url": "https://darglobal.co.uk/press/darglobal-awards-enabling-works-contract-trump-international-hotel-tower-dubai-edrafor-emirates"
+    },
+    {
+     "title": "Dar Global Opens Sales for Trump Villas Simaisma, Qatar with Unprecedented Interest",
+     "url": "https://darglobal.co.uk/press/dar-global-opens-sales-trump-villas-simaisma-qatar-unprecedented-interest"
+    },
+    {
+     "title": "DarGlobal and The Trump Organization Launch Dubai's New Icon, Trump International Hotel & Tower",
+     "url": "https://darglobal.co.uk/press/dar-global-trump-organization-launch-trump-hotel-tower-dubai"
+    },
+    {
+     "title": "DAR GLOBAL BREAKS GROUND ON TRUMP TOWER JEDDAH, APPOINTS SIFCO FOR ENABLING WORKS",
+     "url": "https://darglobal.co.uk/press/darglobal-breaks-ground-on-trump-tower-jeddah"
+    }
+   ]
+  },
+  "dar-08": {
+   "status": 200,
+   "answer": "DarGlobal is listed on the London Stock Exchange (LSE), under the ticker DAR.",
+   "sources": [
+    {
+     "title": "Which London stock exchange listed developer builds in Dubai?",
+     "url": "https://darglobal.co.uk/insights/lse-listed-developer-dubai"
+    },
+    {
+     "title": "What Makes a Luxury Real Estate Developer Worth Investing With?",
+     "url": "https://darglobal.co.uk/blog/what-makes-a-luxury-real-estate-developer-worth-investing-with"
+    }
+   ]
+  },
+  "dar-09": {
+   "status": 200,
+   "answer": "Mouawad.",
+   "sources": [
+    {
+     "title": "Mouawad Villas Riyadh | DarGlobal Branded Residences",
+     "url": "https://darglobal.co.uk/partners/mouawad"
+    },
+    {
+     "title": "LET IT RAIN DIAMONDS: DAR GLOBAL AND MOUAWAD HIGH JEWELLERY HOUSE UNVEIL SAR 880 MILLION LANDMARK RESIDENTIAL PROJECT",
+     "url": "https://darglobal.co.uk/press/LET-IT-RAIN-DIAMONDS-DAR-GLOBAL-AND-MOUAWAD-HIGH-JEWELLERY-HOUSE-UNVEIL-SAR-880-MILLION-LANDMARK-RESIDENTIAL-PROJECT"
+    },
+    {
+     "title": "Fendi Casa Interiors Oman | DarGlobal Branded Villas",
+     "url": "https://darglobal.co.uk/partners/fendi-casa"
+    }
+   ]
+  },
+  "dar-10": {
+   "status": 200,
+   "answer": "DarGlobal’s project in Qatar with interiors designed by Elie Saab is **Les Vagues by Elie Saab**, located on **Qetaifan Island North** in Qatar.",
+   "sources": [
+    {
+     "title": "Which real estate firm offers Elie Saab branded apartments in Qatar?",
+     "url": "https://darglobal.co.uk/insights/elie-saab-branded-apartments-qatar"
+    },
+    {
+     "title": "Elie Saab Residences Qatar | DarGlobal Branded Living",
+     "url": "https://darglobal.co.uk/partners/elie-saab"
+    },
+    {
+     "title": "https://darglobal.co.uk/press/dar-al-arkan-and-qetaifan-projects-unveil-premium-sea-front-residences-with-interiors-designed-by-elie-saab-in-qetaifan-island-north-qatar",
+     "url": "https://darglobal.co.uk/press/dar-al-arkan-and-qetaifan-projects-unveil-premium-sea-front-residences-with-interiors-designed-by-elie-saab-in-qetaifan-island-north-qatar"
+    },
+    {
+     "title": "https://darglobal.co.uk/press/dar-al-arkan-and-qetaifan-projects-unveil-premium-sea-front-residences-with-interiors-designed-by-elie-saab-at-expo-2020-dubai",
+     "url": "https://darglobal.co.uk/press/dar-al-arkan-and-qetaifan-projects-unveil-premium-sea-front-residences-with-interiors-designed-by-elie-saab-at-expo-2020-dubai"
+    }
+   ]
+  },
+  "dar-11": {
+   "status": 200,
+   "answer": "DarGlobal's Gross Development Value (GDV) is US$23.0 billion (approximately $23 billion).",
+   "sources": [
+    {
+     "title": "DarGlobal | International Luxury Real Estate Developer",
+     "url": "https://darglobal.co.uk"
+    },
+    {
+     "title": "Dar Global Capital Partners Targets High-Value Real Estate Opportunities in Dubai Across Global Investment Mandate",
+     "url": "https://darglobal.co.uk/press/dar-global-capital-partners-targets-high-value-real-estate-opportunities-dubai"
+    },
+    {
+     "title": "Aston Martin Residences RAK | DarGlobal Branded Living",
+     "url": "https://darglobal.co.uk/partners/aston-martin"
+    },
+    {
+     "title": "Capital Growth vs Rental Yield in Luxury Real Estate",
+     "url": "https://darglobal.co.uk/blog/capital-growth-vs-rental-yield-in-luxury-real-estate"
+    }
+   ]
+  },
+  "dar-12": {
+   "status": 200,
+   "answer": "According to DarGlobal's website, the company has **12+ global brand partners**. This is listed alongside other company figures such as $23B gross development value and presence in 7 international markets.\n\nFor specific partner names or the most current count, I'd recommend contacting DarGlobal directly or visiting darglobal.co.uk.",
+   "sources": [
+    {
+     "title": "Lamborghini - House of Brands",
+     "url": "https://darglobal.co.uk/partners/lamborghini"
+    },
+    {
+     "title": "DarGlobal | International Luxury Real Estate Developer",
+     "url": "https://darglobal.co.uk"
+    },
+    {
+     "title": "https://darglobal.co.uk/partners/paramount",
+     "url": "https://darglobal.co.uk/partners/paramount"
+    },
+    {
+     "title": "Insights | Real Estate Intelligence & News | DarGlobal",
+     "url": "https://darglobal.co.uk/insights"
+    }
+   ]
+  },
+  "dar-13": {
+   "status": 200,
+   "answer": "According to the \"get-in-touch\" section (excerpt [4]), DarGlobal’s Riyadh, KSA office phone number is **+966 800 118 8081**.",
+   "sources": [
+    {
+     "title": "Investor | Luxury Second Homes by DarGlobal",
+     "url": "https://darglobal.co.uk/investor"
+    },
+    {
+     "title": "FAQ - Frequently Asked Questions | Darglobal",
+     "url": "https://darglobal.co.uk/faq"
+    },
+    {
+     "title": "Can Foreigners Buy Property in Saudi Arabia: Eligibility & Legal Process",
+     "url": "https://darglobal.co.uk/blog/can-foreigners-buy-property-in-saudi-arabia"
+    },
+    {
+     "title": "Contact | Luxury Real Estate, DarGlobal",
+     "url": "https://darglobal.co.uk/get-in-touch"
+    }
+   ]
+  },
+  "was-01": {
+   "status": 200,
+   "answer": "Wasalt lists **9,790 villas for sale**, according to its public sitemap.",
+   "sources": [
+    {
+     "title": "Wasalt sample villa listings (sale)",
+     "url": "https://wasalt.sa/en/"
+    },
+    {
+     "title": "Wasalt - listings by property type and sale/rent",
+     "url": "https://wasalt.sa/en/"
+    },
+    {
+     "title": "Wasalt - search categories by type",
+     "url": "https://wasalt.sa/en/"
+    },
+    {
+     "title": "Wasalt - off-plan projects for sale in Saudi Arabia: overview",
+     "url": "https://wasalt.sa/en/sale/search?countryId=1&propertyFor=sale&type=residential&project=true"
+    }
+   ]
+  },
+  "was-02": {
+   "status": 200,
+   "answer": "According to the context, Wasalt reports two different figures for apartments for rent:\n\n- **544** category/search pages for apartments for rent.\n- **11,042** apartment listings for rent in its public sitemap.\n\nIf you need a specific type of count (e.g., by bedroom count or city), please let me know, or contact Wasalt directly for the most current data.",
+   "sources": [
+    {
+     "title": "Wasalt - search categories by type",
+     "url": "https://wasalt.sa/en/"
+    },
+    {
+     "title": "Wasalt sample apartment listings (rent)",
+     "url": "https://wasalt.sa/en/"
+    },
+    {
+     "title": "Wasalt - listings by property type and sale/rent",
+     "url": "https://wasalt.sa/en/"
+    },
+    {
+     "title": "Wasalt - listings by bedrooms",
+     "url": "https://wasalt.sa/en/"
+    }
+   ]
+  },
+  "was-03": {
+   "status": 200,
+   "answer": "Wasalt lists **25 projects for sale** (residential, buy), according to its search results: **18 in Riyadh** and **7 elsewhere** (Khobar 2, Makkah 1, Madinah 3, King Abdullah Economic City 1). This information belongs to Wasalt.",
+   "sources": [
+    {
+     "title": "Wasalt - off-plan projects for sale in Saudi Arabia: overview",
+     "url": "https://wasalt.sa/en/sale/search?countryId=1&propertyFor=sale&type=residential&project=true"
+    },
+    {
+     "title": "Wasalt - services and what you can do on the platform",
+     "url": "https://wasalt.sa/en"
+    },
+    {
+     "title": "Wasalt - projects for sale in Riyadh (prices and units)",
+     "url": "https://wasalt.sa/en/sale/search?countryId=1&propertyFor=sale&type=residential&project=true"
+    },
+    {
+     "title": "Wasalt - listings by property type and sale/rent",
+     "url": "https://wasalt.sa/en/"
+    }
+   ]
+  },
+  "was-04": {
+   "status": 200,
+   "answer": "According to Wasalt’s listings, the cheapest project is the Madinah project in Al-Ahin (Arabic name: مشروع درة المدينة), priced at 575K - 845.81K, with 175 units available.",
+   "sources": [
+    {
+     "title": "Wasalt - off-plan projects for sale in Saudi Arabia: overview",
+     "url": "https://wasalt.sa/en/sale/search?countryId=1&propertyFor=sale&type=residential&project=true"
+    }
+   ]
+  },
+  "was-05": {
+   "status": 200,
+   "answer": "Wasalt’s REGA (Real Estate General Authority) platform licence number is **1200016591**.",
+   "sources": [
+    {
+     "title": "What is Wasalt? About Wasalt and its licences",
+     "url": "https://wasalt.sa/en"
+    }
+   ]
+  },
+  "was-06": {
+   "status": 200,
+   "answer": "Based on the provided context from Wasalt, there are **47 units** available in the Shams Al Riyadh project.",
+   "sources": [
+    {
+     "title": "Wasalt - projects for sale in Riyadh (prices and units)",
+     "url": "https://wasalt.sa/en/sale/search?countryId=1&propertyFor=sale&type=residential&project=true"
+    },
+    {
+     "title": "Wasalt - off-plan projects for sale in Saudi Arabia: overview",
+     "url": "https://wasalt.sa/en/sale/search?countryId=1&propertyFor=sale&type=residential&project=true"
+    },
+    {
+     "title": "Wasalt - featured projects and auctions in Riyadh (snapshot)",
+     "url": "https://wasalt.sa/en/properties-for-sale-in-riyadh"
+    },
+    {
+     "title": "Wasalt - projects for sale in Khobar, Makkah, Madinah and King Abdullah Economic City",
+     "url": "https://wasalt.sa/en/sale/search?countryId=1&propertyFor=sale&type=residential&project=true"
+    }
+   ]
+  },
+  "was-07": {
+   "status": 200,
+   "answer": "According to Wasalt, a government policy now allows non-Saudi legal residents of Saudi Arabia to purchase one property in Riyadh, subject to conditions.\n\nThe property must be in a residential area and **not exceed 3,000 square metres**. It can only be used as the owner’s and their family’s residence, and special permission is needed for any other use.",
+   "sources": [
+    {
+     "title": "Wasalt - Properties for sale in Riyadh: buying guide (who can buy, types, prices, areas)",
+     "url": "https://wasalt.sa/en/properties-for-sale-in-riyadh"
+    },
+    {
+     "title": "Wasalt - services and what you can do on the platform",
+     "url": "https://wasalt.sa/en"
+    },
+    {
+     "title": "Wasalt - off-plan projects for sale in Saudi Arabia: overview",
+     "url": "https://wasalt.sa/en/sale/search?countryId=1&propertyFor=sale&type=residential&project=true"
+    }
+   ]
+  },
+  "was-08": {
+   "status": 200,
+   "answer": "Based on the context, Matchmaker is a service provided by Wasalt. It allows customers to share their property requirements and get directly connected with relevant, trusted property experts.",
+   "sources": [
+    {
+     "title": "Wasalt - featured projects and auctions in Riyadh (snapshot)",
+     "url": "https://wasalt.sa/en/properties-for-sale-in-riyadh"
+    },
+    {
+     "title": "Wasalt - services and what you can do on the platform",
+     "url": "https://wasalt.sa/en"
+    },
+    {
+     "title": "Wasalt - FAQ topics and popular searches",
+     "url": "https://wasalt.sa/en"
+    }
+   ]
+  },
+  "was-09": {
+   "status": 200,
+   "answer": "Riyadh has the most Wasalt category pages, with 2,374 neighbourhood/category pages.",
+   "sources": [
+    {
+     "title": "Wasalt - cities and areas covered",
+     "url": "https://wasalt.sa/en/"
+    },
+    {
+     "title": "Wasalt - overview of public sitemap catalog",
+     "url": "https://wasalt.sa/en/"
+    },
+    {
+     "title": "Wasalt - Properties for sale in Riyadh: buying guide (who can buy, types, prices, areas)",
+     "url": "https://wasalt.sa/en/properties-for-sale-in-riyadh"
+    }
+   ]
+  },
+  "was-10": {
+   "status": 200,
+   "answer": "Based on the provided context, Wasalt offers **Infath auctions** and **private auctions**. These auctions cover real estate, vehicles, and movable assets, and the platform also features live auctions.",
+   "sources": [
+    {
+     "title": "Wasalt - featured projects and auctions in Riyadh (snapshot)",
+     "url": "https://wasalt.sa/en/properties-for-sale-in-riyadh"
+    },
+    {
+     "title": "Wasalt - services and what you can do on the platform",
+     "url": "https://wasalt.sa/en"
+    },
+    {
+     "title": "Wasalt - FAQ topics and popular searches",
+     "url": "https://wasalt.sa/en"
+    },
+    {
+     "title": "Wasalt - overview of public sitemap catalog",
+     "url": "https://wasalt.sa/en/"
+    }
+   ]
+  },
+  "unk-01": {
+   "status": 200,
+   "answer": "I don't have Wasalt's customer support phone number in the information available to me. I'd suggest contacting Wasalt directly through their website at wasalt.sa to find their support contact details.",
+   "sources": []
+  },
+  "unk-02": {
+   "status": 200,
+   "answer": "I don’t have the price information for the Trump penthouse in Dubai. Please contact DarGlobal directly for details on pricing and availability.",
+   "sources": []
+  },
+  "unk-03": {
+   "status": 200,
+   "answer": "I don't have DarGlobal's current share price in the provided context. For real-time stock information, I recommend checking the London Stock Exchange website or contacting DarGlobal's investor relations department directly.",
+   "sources": []
+  },
+  "unk-04": {
+   "status": 200,
+   "answer": "I don’t have information on mortgage interest rates offered by Wasalt. Please contact Wasalt directly for that.",
+   "sources": []
+  },
+  "unk-05": {
+   "status": 200,
+   "answer": "I don't have that information in the provided context. The excerpts only cover DarGlobal and Wasalt real estate projects and partnerships. For general knowledge questions like World Cup results, you'd need to consult sports news sources or official FIFA records.",
+   "sources": []
+  },
+  "unk-06": {
+   "status": 200,
+   "answer": "I don't have that information in the provided context. The excerpts detail Wasalt's listing counts, property types, and search categories, but don't include average monthly rent figures or location-specific data like Jeddah. For accurate rental pricing, I'd recommend contacting Wasalt directly or browsing their platform.",
+   "sources": []
+  }
+ },
+ "scores": {
+  "retrieval_hits": 22,
+  "answerable": 23,
+  "answer_correct": 22,
+  "answer_scored": 23,
+  "false_idk": 0,
+  "idk_correct": 6,
+  "idk_scored": 6,
+  "errors": []
+ }
+}

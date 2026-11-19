@@ -80,6 +80,31 @@ Without Docker: `pip install -r requirements.txt && OPENROUTER_API_KEY=<your-key
 Push to GitHub -> Render > New > Blueprint (reads `render.yaml`) -> set the `OPENROUTER_API_KEY` secret -> deploy.
 Later pushes to `main` redeploy automatically. Never commit the key (`.env` is git-ignored).
 
+## Evaluation
+A small eval suite lives in `eval/`: 29 questions with expected facts (`eval/questions.json`; 13 DarGlobal, 10 Wasalt, and
+6 the data cannot answer, e.g. Wasalt's support phone number, DarGlobal's share price, an off-topic question). Expected facts
+were checked against the scraped data first, and matching ignores case, accents, commas and spacing.
+
+| Metric | Score | What it measures |
+|---|---|---|
+| Retrieval hit rate | **22 / 23 (96%)** | retrieved context contains the expected facts (offline, no model) |
+| Answer accuracy | **22 / 23 (96%)** | the model's answer contains the expected facts |
+| Correct "I don't know" | **6 / 6 (100%)** | unanswerable questions answered with "I don't have that", and no sources shown |
+| False "I don't know" | **0 / 23** | answerable questions where the bot wrongly gave up |
+
+Run against the live deployment on 2026-11-19 with `openrouter/free`.
+The one failure is *"Which brands partner with DarGlobal?"*: the full brand list sits in a long chunk on the investor page
+that keyword (BM25) retrieval ranks too low, so the answer names only Lamborghini and Paramount. It is left as a known
+limitation (retrieval was not tuned to the test set).
+
+    python eval/run_eval.py --retrieval-only                      # free, no model calls
+    python eval/run_eval.py --url https://<your-app>.onrender.com  # full run; --resume reuses cached answers
+
+Caveats: 29 questions is a small set; the check is "expected facts are present", so it does not penalise extra or
+loosely worded content (e.g. an answer that quotes two different Wasalt counts still passes if the right one is there);
+and the free model is non-deterministic, so rerunning can shift individual results. Full per-question output is in
+`eval/results.json`. The free OpenRouter tier (~50 requests/day) is too small for a full run unless the account has credit.
+
 ## Limitations
 - **Wasalt coverage is partial**: no live listings or prices beyond the copied snapshot, and no detailed policies. Counts
   come from a sitemap snapshot and are not live inventory. Questions outside this data get an "I don't have that" answer.
