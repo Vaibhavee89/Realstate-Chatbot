@@ -25,9 +25,17 @@ Captured from the live deployment with real answers.
 
 ## How it works
 1. **Data** (`data/*.jsonl`, one page per line: `site`, `url`, `title`, `text`) is split into ~900-character chunks at startup;
-   identical chunks are dropped.
-2. **Retrieval** is BM25 over chunk title + URL words + text. Filler words are ignored, a question naming only one company
-   is restricted to that company's data, weak matches are cut, and at most two chunks per page are used.
+   identical chunks are dropped. Every chunk keeps **metadata**: company (DarGlobal / Wasalt), page type (partner, press,
+   insight, blog, FAQ, projects, catalog, ...) and the countries it is about (Oman, UAE, Saudi Arabia, Qatar, Spain, UK),
+   derived from the URL and keyword counts (`app/retrieval.py`).
+2. **Hybrid retrieval**: BM25 (keywords: exact names and numbers) is blended 60/40 with small static embeddings
+   (`model2vec` `potion-base-8M`, 256-dim, numpy only, so it fits Render's 512 MB; chunk vectors are precomputed at Docker
+   build time) for paraphrased questions. The metadata then steers the ranking: a question naming one company is restricted
+   to it; a country in the question ("projects in Oman") boosts chunks about that country; page-type hints ("news", "FAQ",
+   "partners") boost matching pages; and a comparison question ("compare DarGlobal and Wasalt", "which company...")
+   retrieves for each company separately, so both are represented. Weak matches are cut and at most two chunks per page are
+   used. If the embeddings cannot load, it falls back to BM25 only. The model sees each excerpt labelled with its company,
+   page type and country.
 3. **Generation**: the top chunks go to an OpenRouter free model (`openrouter/free`) with an instruction to answer only from
    the excerpts. Sources are shown, but not for "I don't know" answers.
 4. **Streaming**: the UI calls `POST /api/chat/stream`, which forwards OpenRouter's tokens as Server-Sent Events
@@ -74,7 +82,8 @@ bypassed**, so Wasalt's pages could not be scraped automatically. Wasalt data th
 Open http://localhost:8010 (use any free host port). Without `-d`, stop it with Ctrl+C; with it, `docker rm -f rebot`.
 Health check: `GET /health` returns the model name and number of chunks loaded.
 
-Without Docker: `pip install -r requirements.txt && OPENROUTER_API_KEY=<your-key> uvicorn app.main:app --port 8000`.
+Without Docker: `pip install -r requirements.txt && python -m app.build_index && OPENROUTER_API_KEY=<your-key> uvicorn app.main:app --port 8000`
+(`build_index` precomputes the chunk embeddings into `data/index/`; Docker does this at build time. Re-run it after changing `data/`.)
 
 | Variable | Purpose | Default |
 |---|---|---|
@@ -88,31 +97,54 @@ Push to GitHub -> Render > New > Blueprint (reads `render.yaml`) -> set the `OPE
 Later pushes to `main` redeploy automatically. Never commit the key (`.env` is git-ignored).
 
 ## Evaluation
-A small eval suite lives in `eval/`: 29 questions with expected facts (`eval/questions.json`; 13 DarGlobal, 10 Wasalt, and
-6 the data cannot answer, e.g. Wasalt's support phone number, DarGlobal's share price, an off-topic question). Expected facts
-were checked against the scraped data first, and matching ignores case, accents, commas and spacing.
+A small eval suite lives in `eval/`: 43 questions with expected facts (`eval/questions.json`). Expected facts were checked
+against the scraped data first, and matching ignores case, accents, commas and spacing. The questions come in groups:
+23 **fact lookups** (13 DarGlobal, 10 Wasalt), 8 **country and comparison** questions ("List DarGlobal's projects in Oman",
+"Compare DarGlobal and Wasalt"), 6 **paraphrases** with little word overlap ("Who runs DarGlobal day to day?"), and 6 the
+data **cannot answer** (Wasalt's support phone, DarGlobal's share price, an off-topic question).
+
+Live deployment, 2026-11-19, `openrouter/free`:
 
 | Metric | Score | What it measures |
 |---|---|---|
-| Retrieval hit rate | **22 / 23 (96%)** | retrieved context contains the expected facts (offline, no model) |
-| Answer accuracy | **22 / 23 (96%)** | the model's answer contains the expected facts |
+| Retrieval hit rate | **35 / 37 (95%)** | retrieved context contains the expected facts (offline, no model) |
+| Answer accuracy | **35 / 37 (95%)** | the model's answer contains the expected facts |
 | Correct "I don't know" | **6 / 6 (100%)** | unanswerable questions answered with "I don't have that", and no sources shown |
-| False "I don't know" | **0 / 23** | answerable questions where the bot wrongly gave up |
+| False "I don't know" | **1 / 37** | answerable questions where the answer opens with "I don't have..." |
 
-Run against the live deployment on 2026-11-19 with `openrouter/free`.
-The one failure is *"Which brands partner with DarGlobal?"*: the full brand list sits in a long chunk on the investor page
-that keyword (BM25) retrieval ranks too low, so the answer names only Lamborghini and Paramount. It is left as a known
-limitation (retrieval was not tuned to the test set). Chunk sizes (300-900 characters, sentence-level splits) and a suffix
-stemmer were tried; none beat 22/23, each fix just moved the miss to another question (e.g. the Riyadh phone number), so the
-settings were left unchanged. A real fix would need embedding-based or hybrid retrieval.
+By group, answers: fact lookups 22/23, country and comparison 8/8, paraphrases 5/6.
+
+**What hybrid retrieval and metadata changed** (retrieval hit rate on the same 37 questions, offline):
+
+| | BM25 only | Hybrid + metadata |
+|---|---|---|
+| All questions | 32 / 37 (86%) | **35 / 37 (95%)** |
+| Fact lookups | 22 / 23 | 22 / 23 |
+| Country and comparison | 6 / 8 | 7 / 8 |
+| Paraphrases | 4 / 6 | **6 / 6** |
+| Comparison questions retrieving both companies | 0 / 3 | **3 / 3** |
+| Retrieved chunks tagged with the asked country | 97% | 100% |
+
+Honest reading: the embeddings alone are weak (18/23 on fact lookups, 2/6 on paraphrases; a larger 32M model was both worse
+and too big for the instance), so the gain comes from blending them with BM25. Metadata is what makes comparisons work.
+The first useful chunk ranks slightly lower with the hybrid (mean reciprocal rank 0.76 vs 0.78): coverage improved, ordering
+did not. The new question groups were written before tuning, but 43 questions is a small set and the blend weight (0.6) was
+picked between 0.5 and 0.8, not fine-tuned.
+
+**Known failures:** *"Which brands partner with DarGlobal?"* (the brand list sits in a chunk with unrelated text and the page
+says "partnered", not "partner"; the answer names only Lamborghini and says "12+ partners"), and *"Can a foreigner own a home
+in Riyadh?"*, which names no company, so the bot answered from DarGlobal's page on foreign buyers instead of Wasalt's (the
+expected fact was Wasalt's 3,000 sqm limit; arguably an ambiguous question). Two quirks: an answer that starts "I don't have a
+complete list..." and then lists real projects (Oman) hides its sources, because the "I don't know" detector looks only at the
+opening words; and *"Who runs DarGlobal day to day?"* says the excerpts don't say, though they name the CEO. Earlier experiments
+with smaller chunks and a suffix stemmer gave no net gain on keyword retrieval alone.
 
     python eval/run_eval.py --retrieval-only                      # free, no model calls
     python eval/run_eval.py --url https://<your-app>.onrender.com  # full run; --resume reuses cached answers
 
-Caveats: 29 questions is a small set; the check is "expected facts are present", so it does not penalise extra or
-loosely worded content (e.g. an answer that quotes two different Wasalt counts still passes if the right one is there);
-and the free model is non-deterministic, so rerunning can shift individual results. Full per-question output is in
-`eval/results.json`. The free OpenRouter tier (~50 requests/day) is too small for a full run unless the account has credit.
+Caveats: the check is "expected facts are present", so it does not penalise extra or loosely worded content; the free model
+is non-deterministic, so rerunning can shift individual results. Full per-question output is in `eval/results.json`. The
+free OpenRouter tier (~50 requests/day) is too small for a full run unless the account has credit.
 
 ## Limitations
 - **Wasalt coverage is partial**: no live listings or prices beyond the copied snapshot, and no detailed policies. Counts
@@ -121,5 +153,5 @@ and the free model is non-deterministic, so rerunning can shift individual resul
 - **Free model**: OpenRouter's free tier allows roughly 50 requests/day without credit, models rotate, and replies can be
   slow or occasionally empty (the app retries). Errors show the real OpenRouter status code (429 = daily limit,
   401 = bad key, 402 = no credits).
-- Retrieval is keyword-based (BM25), so a page that only mentions a term in passing can still appear as a source.
+- Retrieval blends keywords with small static embeddings, so a page that only mentions a term in passing can still appear as a source. Country and page-type tags are keyword heuristics, not hand-labelled.
 - Answers are informational and not investment advice.
