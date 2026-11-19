@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>Admin · Realty Concierge</title>
+<style>
+:root{--bg:#0b0b0b;--card:#111;--line:rgba(140,122,107,.3);--text:#ede8e1;--mute:#8c7a6b;--gold:#c5a880}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/22px system-ui,sans-serif;padding:24px;max-width:1100px;margin:auto}
+h1{font:500 26px Georgia,serif;color:var(--gold);margin:0 0 4px}h2{font:600 11px system-ui;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin:26px 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:14px 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.big{font:500 28px Georgia,serif;color:var(--gold)}.lbl{color:var(--mute);font-size:11px;text-transform:uppercase;letter-spacing:.12em}
+table{width:100%;border-collapse:collapse}td,th{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{color:var(--mute);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.1em}
+input,button{font:inherit;color:var(--text);background:#1a1a1a;border:1px solid var(--line);border-radius:4px;padding:8px 10px}button{cursor:pointer;color:var(--gold)}
+.note{color:var(--mute);font-size:12px}.err{color:#ffb4ab}.wrap{overflow:auto}
+</style></head><body>
+<h1>Admin</h1><div class="note">Observability and enquiries. Data lives in a SQLite file on the server (ephemeral on Render's free tier).</div>
+<form id="f" style="margin:14px 0"><input id="t" type="password" placeholder="Admin token" autocomplete="off" style="width:260px"> <button>Load</button> <span id="msg" class="err"></span></form>
+<div id="out"></div>
+<script>
+const out=document.getElementById('out'),msg=document.getElementById('msg'),t=document.getElementById('t');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const H=()=>({'X-Admin-Token':t.value});
+const tile=(n,l)=>`<div class="card"><div class="big">${esc(n??'–')}</div><div class="lbl">${l}</div></div>`;
+const table=(head,rows)=>`<div class="card wrap"><table><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr>${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')||'<tr><td class="note">none yet</td></tr>'}</table></div>`;
+async function load(){
+  msg.textContent='';
+  const [s,l]=await Promise.all([fetch('/admin/stats',{headers:H()}),fetch('/admin/leads',{headers:H()})]);
+  if(!s.ok){msg.textContent=s.status===401?'Wrong token.':'Admin is not enabled on this server.';return}
+  const st=await s.json(),leads=await l.json(),L=st.latency_ms,F=st.feedback;
+  out.innerHTML=`<h2>Overview</h2><div class="grid">${tile(st.chats,'chats')}${tile(st.leads,'enquiries')}${tile(st.handoff_shown,'handoff cards shown')}
+  ${tile(L.ttft_p50!=null?L.ttft_p50+' ms':null,'first token, median')}${tile(L.ttft_p95!=null?L.ttft_p95+' ms':null,'first token, p95')}${tile(L.total_p50!=null?L.total_p50+' ms':null,'total, median')}
+  ${tile(F.up_share!=null?Math.round(F.up_share*100)+'%':null,'thumbs up ('+F.up+' up / '+F.down+' down)')}${tile(L.retrieval_mean!=null?L.retrieval_mean+' ms':null,'retrieval, mean')}</div>
+  <h2>Outcomes</h2>${table(['outcome','count'],Object.entries(st.outcomes))}
+  <h2>Models that answered</h2>${table(['model','count'],Object.entries(st.models))}
+  <h2>Most retrieved sources</h2>${table(['url','times retrieved'],st.top_sources)}
+  <h2>Recent thumbs-down</h2>${table(['when','question','comment'],st.recent_thumbs_down.map(r=>[r.ts,r.question,r.comment]))}
+  <h2>Enquiries <button id="csv" type="button">Download CSV</button></h2>${table(['when','name','email','phone','company','message','asked'],leads.map(r=>[r.ts,r.name,r.email,r.phone,r.company,r.message,r.source_question]))}`;
+  document.getElementById('csv').onclick=async()=>{const r=await fetch('/admin/leads.csv',{headers:H()});const a=document.createElement('a');a.href=URL.createObjectURL(await r.blob());a.download='leads.csv';a.click()};
+}
+document.getElementById('f').onsubmit=e=>{e.preventDefault();load()};
+</script></body></html>

@@ -17,7 +17,8 @@ CHAIN = ["openrouter/free", "google/gemma-4-31b-it:free", "nvidia/nemotron-3-ult
 
 def start():
     env = {**os.environ, "OPENROUTER_API_KEY": "k", "OPENROUTER_API_URL": FAKE + "/v1/chat/completions",
-           "LLM_RETRY_PAUSE": "0.1", "LLM_READ_TIMEOUT": "3", "PYTHONPATH": str(ROOT), "HF_HUB_OFFLINE": "1"}
+           "LLM_RETRY_PAUSE": "0.1", "LLM_READ_TIMEOUT": "3", "PYTHONPATH": str(ROOT), "HF_HUB_OFFLINE": "1",
+           "DB_PATH": os.path.join(__import__("tempfile").mkdtemp(), "t.db")}
     env.pop("OPENROUTER_MODEL", None); env.pop("OPENROUTER_FALLBACKS", None)
     fake = subprocess.Popen([sys.executable, "-m", "uvicorn", "fake_openrouter:app", "--app-dir", str(ROOT / "tests"),
                              "--port", "9101", "--log-level", "warning"], env=env)

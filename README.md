@@ -57,6 +57,18 @@ Captured from the live deployment with real answers.
      the user gets a calm message (no raw error codes), a "Try again" button where retrying helps, and the **retrieved
      passages**, so the app still shows real source text when the AI cannot write an answer. The answer reports which
      model wrote it. A reply that breaks mid-way keeps its partial text.
+   - **Lead capture / handoff**: when someone says they want to buy, rent, reserve or view ("I want to buy a villa in
+     Muscat", "can I book a viewing?"), the answer is followed by a card: the companies' **own contact pages** (the one the
+     conversation is about first) and a short **enquiry form** (name, email or phone, company, what they are looking for,
+     explicit consent) that saves to SQLite. Two detection layers again: regex for obvious phrasings, plus the model starting
+     its reply with a marker that the server strips. An "Enquire" button in the header and sidebar is always available. The
+     form says plainly that this demo is **not run by DarGlobal or Wasalt** and that nothing is sent to either company: the
+     enquiry goes to the demo's owner, and the official links are the real route. Spam protection: a hidden honeypot field,
+     server-side validation, and 5 enquiries per hour per connection.
+   - **Observability**: every question writes one row to a small SQLite file: retrieval time, time to first token, total
+     time, model that answered, attempts, outcome (answered, idk, refused by regex or model, unavailable, interrupted,
+     aborted), the retrieved source URLs, whether the handoff card was shown, and the **thumbs up/down** (with an optional
+     comment on a thumbs-down). Logging never breaks a chat. See "Leads, logging and privacy".
 4. **Streaming**: the UI calls `POST /api/chat/stream`, which forwards OpenRouter's tokens as Server-Sent Events
    (`{"start"}`, `{"t": token}`..., then `{"done", "sources"}` or `{"error"}`), so text appears as it is generated
    instead of after the full reply; a slow free model feels much faster. Empty streams are retried before anything is
@@ -110,6 +122,10 @@ Without Docker: `pip install -r requirements.txt && python -m app.build_index &&
 | `OPENROUTER_MODEL` | first model in the chain | `openrouter/free` |
 | `OPENROUTER_FALLBACKS` | comma-separated fallback `:free` models (empty = none) | `google/gemma-4-31b-it:free,nvidia/nemotron-3-ultra-550b-a55b:free` |
 | `LLM_READ_TIMEOUT` / `LLM_DEADLINE` | seconds to wait for each model's next chunk / to keep starting attempts | `25` / `60` |
+| `ADMIN_TOKEN` | enables `/admin` (stats page), `/admin/stats`, `/admin/leads`, `/admin/leads.csv`; send it as `X-Admin-Token` or `Authorization: Bearer`. Unset = those routes do not exist | unset |
+| `LEAD_WEBHOOK_URL` | also POST every saved enquiry here (Slack-compatible `text` plus the full record) | unset |
+| `DB_PATH` | SQLite file for the chat log and enquiries | `data/app.db` |
+| `LOG_QUESTIONS` | `0` = store a short hash of each question instead of its text | `1` |
 | `PORT` | listen port (set by Render) | `8000` |
 
 ## 3. Deploy (Render, free)
@@ -145,8 +161,27 @@ stale-share checks above were added. The challenge is not bypassed (same policy 
 be challenged more than a home connection; if so the job will fail loudly instead of publishing a degraded dataset, and the
 UI's date simply goes stale and then amber.
 
+## Leads, logging and privacy
+**What is stored** (in `data/app.db`): per question, the question text (first 500 characters), outcome, timings, model,
+retrieved source URLs and any thumbs rating; per enquiry, the fields the person typed (name, email and/or phone, company,
+message), the question that triggered it, and their consent. **IP addresses are not stored**; the rate limiter keeps them in
+memory only. Set `LOG_QUESTIONS=0` to store only a hash of each question. Nothing is sent anywhere unless `LEAD_WEBHOOK_URL`
+is set. To delete someone's data, remove their rows (or the file); there is no automated retention policy, and this is a demo,
+not a GDPR-compliance claim. Questions are free text, so people can put personal details in them: that is why the question
+log is switchable.
+
+**Durability.** On Render's free tier the container disk is **ephemeral**: `data/app.db` is wiped on every deploy and restart.
+For leads that must survive, set `LEAD_WEBHOOK_URL` (each enquiry is forwarded as it is saved), or attach a persistent disk
+and point `DB_PATH` at it. Read the data with the admin page (`/admin`, needs `ADMIN_TOKEN`) or `GET /admin/stats` and
+`/admin/leads.csv`:
+
+    curl -H "X-Admin-Token: $ADMIN_TOKEN" https://<your-app>.onrender.com/admin/stats
+
+`/admin/stats` returns chat counts by outcome, p50/p95 time to first token and total time, mean retrieval time, thumbs up
+share, the models that answered, the most retrieved sources, recent thumbs-down comments, and the enquiry count.
+
 ## Tests
-`python tests/test_build_meta.py` (13 checks) covers the data-freshness validation, and `python tests/test_resilience.py` runs 23 checks with no API key and no network: it starts a fake OpenRouter
+`python tests/test_build_meta.py` (13 checks) covers the data-freshness validation, `python tests/test_leads_logging.py` (39 checks) covers chat logging and latency, thumbs, the handoff card, the enquiry form (validation, honeypot, rate limit, webhook copy) and admin access control, and `python tests/test_resilience.py` runs 23 checks with no API key and no network: it starts a fake OpenRouter
 (`tests/fake_openrouter.py`) and the app, injects failures (busy model, empty reply, whole chain down, quota used up,
 bad key, break mid-answer) and asserts which models were tried, that exactly one retry happens, that the user-facing
 message is calm, and that passages are still returned, on both the streaming and JSON endpoints. It also checks the
@@ -228,6 +263,9 @@ run makes roughly 60 model requests, more than the free OpenRouter tier's ~50 a 
   $10 top-up), models rotate and replies can be slow or occasionally empty. The app falls back across models, retries
   once, and degrades to showing the retrieved passages with a clear message (see Resilience). Free model IDs change
   often; if one is removed it is skipped, and the chain can be changed with the environment variables above.
+- **Enquiries stay with this demo**: the form saves to the demo's own database (and webhook, if set); it does not reach
+  DarGlobal or Wasalt, and the UI says so. A production bot would post leads to the company's CRM instead. The in-memory
+  rate limiter and the single admin token are fine for a small instance, not for a public service at scale.
 - **Advice guardrail**: the regex layer is brittle by itself (see Evaluation); the model layer depends on a free model
   following the marker instruction, so an unusual phrasing can still slip through to a normal answer.
 - Retrieval blends keywords with small static embeddings, so a page that only mentions a term in passing can still appear as a source. Country and page-type tags are keyword heuristics, not hand-labelled.

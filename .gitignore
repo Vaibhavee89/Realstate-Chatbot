@@ -3,3 +3,6 @@ __pycache__/
 .DS_Store
 data/index/
 .scrape_report.json
+data/app.db
+data/app.db-wal
+data/app.db-shm

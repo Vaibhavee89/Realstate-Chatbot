@@ -72,6 +72,23 @@ def guard_eval(qs):
     return sets, false_ref
 
 
+def handoff_eval(qs):
+    """offline, layer 1 only: buy-intent phrasings that show the handoff card, and any false triggers"""
+    from app.guard import is_investment_advice
+    from app.handoff import wants_handoff
+
+    sets = {}
+    for q in qs:
+        if q.get("handoff"):
+            n = sets.setdefault(q.get("set", "?"), [0, 0])
+            n[1] += 1
+            n[0] += wants_handoff(q["q"])
+    # a question refused as investment advice never shows the card, so it is not a false trigger
+    false = [q["id"] for q in qs if not q.get("handoff") and not q.get("refuse") and wants_handoff(q["q"])
+             and not is_investment_advice(q["q"])]
+    return sets, false
+
+
 def ask(url, question, retries=2):
     last = None
     for _ in range(retries + 1):
@@ -80,7 +97,7 @@ def ask(url, question, retries=2):
             j = r.json()
             if r.status_code == 200 and j.get("answer"):
                 return {"status": 200, "answer": j["answer"], "sources": j.get("sources", []),
-                        "passages": j.get("passages", []), "refused": j.get("refused", False)}
+                        "passages": j.get("passages", []), "refused": j.get("refused", False), "handoff": bool(j.get("handoff"))}
             last = {"status": r.status_code, "answer": j.get("answer", ""), "sources": [], "passages": [], "refused": False,
                     "kind": j.get("kind")}
             if j.get("kind") == "quota":
@@ -103,11 +120,15 @@ def main():
     ap.add_argument("--retrieval-only", action="store_true")
     ap.add_argument("--resume", action="store_true", help="reuse successful answers from eval/results.json")
     ap.add_argument("--delay", type=float, default=2.0)
+    ap.add_argument("--only", help="comma-separated tags (v1..v8): run just these question groups, e.g. v7,v8")
+    ap.add_argument("--out", type=Path, default=RESULTS, help="where to write the results JSON")
     a = ap.parse_args()
     if not a.retrieval_only and not a.url:
         ap.error("--url is required unless --retrieval-only")
 
     qs = json.loads(QUESTIONS.read_text())
+    if a.only:
+        qs = [q for q in qs if q.get("tag") in set(a.only.split(","))]
     byq = {q["id"]: q for q in qs}
     answerable = [q for q in qs if "expect" in q]
     unknown = [q for q in qs if q.get("unknown")]
@@ -124,12 +145,16 @@ def main():
     g_sets, g_false = guard_eval(qs)
     print("Advice guard, regex layer only (offline): " + ", ".join(f"{k} {v[0]}/{v[1]}" for k, v in g_sets.items())
           + f"; false refusals on the {sum(1 for q in qs if not q.get('refuse'))} other questions: {len(g_false)} {g_false or ''}")
+    h_sets, h_false = handoff_eval(qs)
+    if h_sets:
+        print("Handoff intent, regex layer only (offline): " + ", ".join(f"{k} {v[0]}/{v[1]}" for k, v in h_sets.items())
+              + f"; false triggers on the {sum(1 for q in qs if not q.get('handoff'))} other questions: {len(h_false)} {h_false or ''}")
     if a.retrieval_only:
         return
 
     from app.main import is_unknown  # same "I don't know" test the server uses to hide sources
 
-    cache = json.loads(RESULTS.read_text()).get("answers", {}) if (a.resume and RESULTS.exists()) else {}
+    cache = json.loads(a.out.read_text()).get("answers", {}) if (a.resume and a.out.exists()) else {}
     answers, stop = {}, False
     for q in qs:
         c = cache.get(q["id"])
@@ -171,6 +196,15 @@ def main():
     for q in allow + unknown:
         if got(q) and answers[q["id"]].get("refused"):
             other_refused.append(q["id"])
+    hand_rows, false_hand = [], []
+    for q in qs:
+        if not got(q) or q.get("refuse"):
+            continue
+        shown = bool(answers[q["id"]].get("handoff"))
+        if q.get("handoff"):
+            hand_rows.append({"id": q["id"], "ok": shown, "set": q.get("set", "?")})
+        elif "handoff" in answers[q["id"]] and shown:
+            false_hand.append(q["id"])
     for q in advice:
         if got(q):
             ref_rows.append({"id": q["id"], "ok": bool(answers[q["id"]].get("refused")), "set": q.get("set", "?")})
@@ -195,6 +229,17 @@ def main():
     if n_r:
         print(f"Investment-advice questions refused:      {refd}/{n_r}   (" + ", ".join(f"{k} {v[0]}/{v[1]}" for k, v in parts.items()) + ")")
         print(f"False refusals on factual questions:      {false_ref}/{n_fact} {false_ref_ids or ''}")
+    if hand_rows:
+        hp = {}
+        for r in hand_rows:
+            x = hp.setdefault(r["set"], [0, 0]); x[1] += 1; x[0] += r["ok"]
+        n_checked = sum(1 for q in qs if not q.get("handoff") and not q.get("refuse") and got(q) and "handoff" in answers[q["id"]])
+        print(f"Buy-intent questions that show the handoff card: {sum(r['ok'] for r in hand_rows)}/{len(hand_rows)}   ("
+              + ", ".join(f"{k} {v[0]}/{v[1]}" for k, v in hp.items()) + ")")
+        print(f"False handoff cards on other questions:  {len(false_hand)}/{n_checked} {false_hand or ''}")
+        for r in hand_rows:
+            if not r["ok"]:
+                print(f"  NO CARD {r['id']} ({r['set']}): {byq[r['id']]['q']}")
     non_idk = [r for r in ans_rows if not r["false_idk"]]
     cited = sum(r["cited"] for r in non_idk)
     inval = sum(r["invalid_cite"] for r in non_idk)
@@ -215,7 +260,7 @@ def main():
     if errs:
         print(f"Excluded (HTTP errors / rate limit): {len(errs)} -> {errs}")
 
-    RESULTS.write_text(json.dumps({
+    a.out.write_text(json.dumps({
         "url": a.url, "retrieval": ret, "answers": answers,
         "scores": {"retrieval_hits": ret_hits, "answerable": len(answerable), "answer_correct": acc, "answer_scored": n_a,
                    "false_idk": fidk, "idk_correct": idk, "idk_scored": n_u, "refused": refd, "refusal_scored": n_r,
@@ -223,7 +268,7 @@ def main():
                    "refusal_by_set": parts, "cited": cited, "cite_scored": len(non_idk), "invalid_cites": inval,
                    "cites_support_facts": sup, "cites_support_scored": len(fact_ok), "errors": errs},
     }, ensure_ascii=False, indent=1))
-    print(f"\nSaved {RESULTS.relative_to(ROOT)}")
+    print(f"\nSaved {a.out}")
 
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ def err(status, msg, headers=None):
 @app.post("/v1/chat/completions")
 async def cc(r: Request):
     b = await r.json(); q = b["messages"][-1]["content"]; model = b["model"]; stream = bool(b.get("stream"))
-    mode = next((m for m in ["MODEADV","MODEF12","MODEF1","MODEALL","MODEFLAKY","MODEQUOTA","MODEEMPTYA","MODEMID","MODE401","MODESLOW"] if m in q), "OK")
+    mode = next((m for m in ["MODEHANDOFF","MODEADV","MODEF12","MODEF1","MODEALL","MODEFLAKY","MODEQUOTA","MODEEMPTYA","MODEMID","MODE401","MODESLOW"] if m in q), "OK")
     log.append((mode, model)); n_for_q = sum(1 for m, _ in log if m == mode)
 
     # ---- failures ----
@@ -36,13 +36,17 @@ async def cc(r: Request):
     empty = mode == "MODEEMPTYA" and n_for_q == 1
 
     if not stream:
-        text = "" if empty else ("[[ADVICE]]" if mode == "MODEADV" else ANSWER)
+        text = "" if empty else ("[[ADVICE]]" if mode == "MODEADV" else ("[[HANDOFF]] " + ANSWER if mode == "MODEHANDOFF" else ANSWER))
         return {"model": "fake/answering-model", "choices": [{"message": {"content": text}}]}
 
     async def g():
         yield ": OPENROUTER PROCESSING\n\n"
         if empty:
             yield chunk({"reasoning": "hmm"}); yield DONE; return
+        if mode == "MODEHANDOFF":  # marker split across chunks, then a normal answer
+            for part in ["[[HAND", "OFF]] ", ANSWER]:
+                yield chunk({"content": part}); await asyncio.sleep(0.03)
+            yield DONE; return
         if mode == "MODEADV":
             for part in ["[[AD", "VICE", "]]"]:
                 yield chunk({"content": part}); await asyncio.sleep(0.03)
@@ -55,3 +59,10 @@ async def cc(r: Request):
                 yield 'data: {"error": {"message": "upstream died", "code": 502}}\n\n'; return
         yield DONE
     return StreamingResponse(g(), media_type="text/event-stream")
+
+
+hooks = []
+@app.post("/hook")
+async def hook(r: Request): hooks.append(await r.json()); return {}
+@app.get("/hooks")
+async def get_hooks(): return hooks

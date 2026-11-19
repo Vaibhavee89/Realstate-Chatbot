@@ -76,6 +76,30 @@ details.grounding summary:hover{color:var(--champagne)}
 .fresh{margin:0 0 12px;color:var(--bronze);font:600 10px/16px var(--sans);letter-spacing:.14em;text-transform:uppercase;display:flex;align-items:center;gap:8px}
 .fresh i{flex:none;width:7px;height:7px;border-radius:50%;background:var(--champagne)}
 .fresh.stale{color:var(--gold)}.fresh.stale i{background:var(--gold);box-shadow:0 0 8px var(--gold)}
+.fb{margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;color:var(--bronze);font:600 10px/16px var(--sans);letter-spacing:.14em;text-transform:uppercase}
+.fb button,.btn,.enq-btn{all:unset;box-sizing:border-box;cursor:pointer;padding:5px 12px;border:1px solid rgba(197,168,128,.45);border-radius:4px;color:var(--champagne);font:600 11px/16px var(--sans);letter-spacing:.12em;text-transform:uppercase;text-decoration:none;display:inline-block}
+.fb button:hover,.btn:hover,.enq-btn:hover{background:var(--champagne);color:#0b0b0b}
+.fb button.on{background:var(--champagne);color:#0b0b0b}.fb button[disabled]{opacity:.55;cursor:default}
+.fb input{all:unset;box-sizing:border-box;flex:1;min-width:180px;padding:6px 10px;border:1px solid rgba(140,122,107,.4);border-radius:4px;color:var(--alabaster);font:400 13px var(--sans);letter-spacing:0;text-transform:none}
+.fb .thanks{color:var(--champagne)}
+.handoff{margin-top:16px;padding:16px;border:1px solid rgba(212,175,55,.4);border-radius:4px;background:rgba(212,175,55,.05)}
+.handoff .t{color:var(--gold);font:600 11px/16px var(--sans);letter-spacing:.14em;text-transform:uppercase}
+.handoff p{margin:8px 0;font-size:14px;line-height:22px}.handoff .small{color:var(--bronze);font-size:12px;line-height:18px}
+.handoff .links{display:flex;gap:10px;flex-wrap:wrap;margin:8px 0}
+.enq-form{display:grid;gap:10px;margin-top:12px}
+.enq-form label{display:block;color:var(--bronze);font:600 10px/16px var(--sans);letter-spacing:.14em;text-transform:uppercase;margin-bottom:3px}
+.enq-form input[type=text],.enq-form input[type=email],.enq-form input[type=tel],.enq-form select,.enq-form textarea{width:100%;padding:10px 12px;background:var(--obsidian);border:1px solid rgba(140,122,107,.4);border-radius:4px;color:var(--alabaster);font:400 14px var(--sans)}
+.enq-form input:focus,.enq-form select:focus,.enq-form textarea:focus{outline:none;border-color:var(--champagne);box-shadow:0 0 12px rgba(197,168,128,.15)}
+.enq-form textarea{min-height:76px;resize:vertical}
+.enq-form .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.enq-form label.consent{display:flex;gap:10px;align-items:flex-start;margin:0;color:var(--stone);font:400 12px/18px var(--sans);letter-spacing:0;text-transform:none;cursor:pointer}
+.enq-form label.consent input[type=checkbox]{all:revert;flex:none;width:16px;height:16px;margin:2px 0 0;accent-color:var(--champagne);cursor:pointer}
+.enq-form .e{color:#ffb4ab;font-size:12px;min-height:0}
+.enq-form .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.enq-form .actions{display:flex;gap:10px;align-items:center}
+.enq-ok{padding:12px 14px;border:1px solid rgba(212,175,55,.4);border-radius:4px;color:var(--alabaster);font-size:14px;line-height:22px}
+.enq-btn{margin-left:14px}
+@media(max-width:760px){.enq-form .two{grid-template-columns:1fr}}
 .note{color:var(--bronze);font-size:12px;margin-top:10px}
 .status{margin-left:12px;color:var(--bronze);font:600 11px/16px var(--sans);letter-spacing:.14em;text-transform:uppercase;vertical-align:middle}
 .typing{display:inline-flex;gap:5px}.typing i{width:6px;height:6px;border-radius:50%;background:var(--champagne);animation:b 1.2s infinite}
@@ -131,11 +155,12 @@ input::placeholder{color:rgba(237,232,225,.4)}
     <button class="on" onclick="reset()">✦&nbsp; Concierge AI</button>
     <button onclick="ask('What projects does DarGlobal have in Oman?')">▤&nbsp; DarGlobal projects</button>
     <button onclick="ask('What does Wasalt list for sale?')">⌂&nbsp; Wasalt listings</button>
+    <button onclick="openEnquiry()">✉&nbsp; Enquire</button>
   </nav>
   <div class="side-foot">Answers are drawn only from publicly available website data, with sources cited.</div>
 </aside>
 
-<header class="caps"><span>Public data assistant</span><span><b>DarGlobal</b> &nbsp;·&nbsp; <b>Wasalt</b></span></header>
+<header class="caps"><span>Public data assistant</span><span><b>DarGlobal</b> &nbsp;·&nbsp; <b>Wasalt</b><button class="enq-btn" type="button" onclick="openEnquiry()">Enquire</button></span></header>
 
 <main>
   <div id="log"></div>
@@ -226,6 +251,76 @@ function showSources(w,sources,answer,model){
   srcs.hidden=false;
 }
 
+/* ---- thumbs up/down: stored with the chat's log row so answers can be reviewed ---- */
+let lastCid='';
+async function sendFeedback(cid,value,comment){
+  try{await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:cid,value,comment:comment||''})})}catch(e){}
+}
+function showFeedback(w,cid){
+  if(!cid)return;
+  const d=document.createElement('div');d.className='fb';
+  d.innerHTML='<span>Was this helpful?</span><button type="button" data-v="1">▲ Yes</button><button type="button" data-v="-1">▼ No</button>';
+  const [yes,no]=d.querySelectorAll('button');
+  const thanks=()=>{d.innerHTML='<span class="thanks">Thanks for the feedback</span>'};
+  yes.onclick=async()=>{yes.classList.add('on');no.disabled=true;yes.disabled=true;await sendFeedback(cid,1);thanks()};
+  no.onclick=async()=>{
+    no.classList.add('on');no.disabled=true;yes.disabled=true;sendFeedback(cid,-1);
+    const i=document.createElement('input');i.placeholder='What was wrong? (optional)';i.maxLength=300;
+    const s=document.createElement('button');s.type='button';s.textContent='Send';
+    d.appendChild(i);d.appendChild(s);i.focus();
+    const done=async()=>{await sendFeedback(cid,-1,i.value.trim());thanks()};
+    s.onclick=done;i.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();done()}};
+  };
+  w.appendChild(d);
+}
+
+/* ---- handoff: "I want to buy..." -> official contact links, or a short enquiry form saved by this demo ---- */
+function enquiryForm(question,cid,company){
+  const f=document.createElement('form');f.className='enq-form';f.noValidate=true;
+  f.innerHTML=`
+   <div class="two"><div><label for="e-name">Your name</label><input type="text" id="e-name" name="name" autocomplete="name" maxlength="80"><div class="e" data-for="name"></div></div>
+   <div><label for="e-co">Interested in</label><select id="e-co" name="company"><option value="dar">DarGlobal</option><option value="wasalt">Wasalt</option><option value="either">Not sure yet</option></select></div></div>
+   <div class="two"><div><label for="e-mail">Email</label><input type="email" id="e-mail" name="email" autocomplete="email"><div class="e" data-for="email"></div></div>
+   <div><label for="e-tel">Phone (optional if you gave an email)</label><input type="tel" id="e-tel" name="phone" autocomplete="tel"><div class="e" data-for="phone"></div></div></div>
+   <div class="e" data-for="contact"></div>
+   <div><label for="e-msg">What are you looking for? (location, budget, timing)</label><textarea id="e-msg" name="message" maxlength="1000"></textarea><div class="e" data-for="message"></div></div>
+   <div class="hp" aria-hidden="true"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+   <label class="consent"><input type="checkbox" name="consent"><span>I agree that this demo may store these details so its owner can contact me. This demo assistant is <b>not run by DarGlobal or Wasalt</b>, and nothing is sent to either company; to reach them, use their contact links.</span></label>
+   <div class="e" data-for="consent"></div>
+   <div class="actions"><button class="btn" type="submit">Send enquiry</button><span class="e" data-for="form"></span></div>`;
+  f.company.value=company||'either';
+  f.onsubmit=async e=>{
+    e.preventDefault();f.querySelectorAll('.e').forEach(x=>x.textContent='');
+    const btn=f.querySelector('button[type=submit]');btn.disabled=true;
+    const body={name:f.name.value,email:f.email.value,phone:f.phone.value,company:f.company.value,message:f.message.value,
+                source_question:question||'',chat_id:cid||lastCid||'',consent:f.consent.checked,website:f.website.value};
+    let j;try{j=await (await fetch('/api/lead',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json()}
+    catch(err){j={ok:false,errors:{form:'Network error, please try again.'}}}
+    if(j.ok){
+      const ok=document.createElement('div');ok.className='enq-ok';
+      ok.innerHTML=`Thank you${body.name.trim()?', '+esc(body.name.trim().split(' ')[0]):''}. Your enquiry was saved by this demo. It was <b>not</b> sent to DarGlobal or Wasalt: for a reply from them, please use their contact pages.`;
+      f.replaceWith(ok);return;
+    }
+    btn.disabled=false;
+    for(const [k,v] of Object.entries(j.errors||{'form':'Something went wrong.'})){const el=f.querySelector(`.e[data-for="${k}"]`)||f.querySelector('.e[data-for="form"]');el.textContent=v}
+  };
+  return f;
+}
+function handoffCard(h,question,cid){
+  const d=document.createElement('div');d.className='handoff';
+  const first=h.contacts[0].company==='Wasalt'?'wasalt':'dar';
+  d.innerHTML=`<div class="t">Ready for the next step?</div><p>For a real enquiry, contact the company directly:</p>
+   <div class="links">${h.contacts.map(c=>`<a class="btn" href="${esc(c.url)}" target="_blank" rel="noopener">Contact ${esc(c.company)} →</a>`).join('')}</div>
+   <p class="small">Or leave your details here. This demo saves them for its owner; it does not pass them on to either company.</p>
+   <button class="btn" type="button">Leave my details</button>`;
+  d.querySelector('button').onclick=ev=>{ev.target.replaceWith(enquiryForm(question,cid,first))};
+  return d;
+}
+function openEnquiry(){
+  const w=msg('bot','<p>Leave your details and what you are looking for. This is a demo assistant: your enquiry is saved by its owner and is not sent to DarGlobal or Wasalt.</p>');
+  w.appendChild(enquiryForm('',lastCid,'either'));w.querySelector('input[name=name]').focus();
+}
+
 /* read the Server-Sent Events stream: {start} -> {t:"token"}... -> {done,sources} | {error} */
 async function streamAnswer(m,w){
   const st=w.querySelector('.status'),setStatus=x=>{if(st&&!w.classList.contains('streaming'))st.textContent=x};
@@ -236,7 +331,7 @@ async function streamAnswer(m,w){
     const j=await r.json().catch(()=>({}));return {text:'',error:j.answer||'No reply received. Please try again.',errInfo:j};
   }
   const reader=r.body.getReader(),dec=new TextDecoder();
-  let buf='',text='',done=null,error=null,errInfo=null,raf=0;
+  let buf='',text='',done=null,error=null,errInfo=null,raf=0,cid='';
   const paint=()=>{raf=0;w.innerHTML=md(text);log.scrollTop=log.scrollHeight};
   for(;;){
     const {value,done:end}=await reader.read();if(end)break;
@@ -245,6 +340,7 @@ async function streamAnswer(m,w){
       const line=buf.slice(0,i).trim();buf=buf.slice(i+2);
       if(!line.startsWith('data:'))continue;
       let j;try{j=JSON.parse(line.slice(5))}catch(e){continue}
+      if(j.chat_id)cid=j.chat_id;
       if(j.status)setStatus(j.status);
       else if(j.start)setStatus(j.found?`Found ${j.found} excerpt${j.found>1?'s':''} from ${j.pages} page${j.pages>1?'s':''} · writing answer…`:'No matching excerpts found · asking the model…');
       else if(j.t){if(!text)w.classList.add('streaming');text+=j.t;if(!raf)raf=requestAnimationFrame(paint)}   /* batch repaints to one per frame */
@@ -255,7 +351,8 @@ async function streamAnswer(m,w){
   if(raf)cancelAnimationFrame(raf);
   w.classList.remove('streaming');
   if(text)w.innerHTML=md(text,done&&done.passages?done.passages.length:null);
-  return {text,error,done,errInfo};
+  if(cid)lastCid=cid;
+  return {text,error,done,errInfo,cid};
 }
 
 f.onsubmit=async e=>{
@@ -263,7 +360,7 @@ f.onsubmit=async e=>{
   msg('user',esc(m));
   const w=msg('bot','<span class="typing"><i></i><i></i><i></i></span><span class="status">Searching sources…</span>');   /* shown until the first token arrives */
   try{
-    const {text,error,done,errInfo}=await streamAnswer(m,w);
+    const {text,error,done,errInfo,cid}=await streamAnswer(m,w);
     if(error){
       srcs.hidden=true;
       const kind=(errInfo&&errInfo.kind)||'error';
@@ -280,7 +377,9 @@ f.onsubmit=async e=>{
       w.parentElement.classList.add('refusal');srcs.hidden=true;
       const g=document.createElement('div');g.className='guard';g.textContent='Guardrail · investment advice declined';w.appendChild(g);
     }else{
-      showSources(w,done&&done.sources,text,done&&done.model);showPassages(w,done);
+      showSources(w,done&&done.sources,text,done&&done.model);showFeedback(w,cid);
+      if(done&&done.handoff&&done.handoff.contacts)w.appendChild(handoffCard(done.handoff,m,cid));
+      showPassages(w,done);
       hist.push({role:'user',content:m},{role:'assistant',content:plain(text)});
     }
   }catch(err){w.textContent='Network error, please retry.'}

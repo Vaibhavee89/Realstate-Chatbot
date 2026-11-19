@@ -122,8 +122,9 @@ def _unavailable(last, tried):
     return Unavailable(kind, friendly(kind, tried, last.reset if last else None), last.code if last else 0, tried)
 
 
-async def complete(body, key):
-    """-> (text, model that answered). Raises Unavailable."""
+async def complete(body, key, info=None):
+    """-> (text, model that answered). Raises Unavailable. info["attempts"] = models tried (for the log)."""
+    info = {} if info is None else info
     t0, tried, last = time.monotonic(), [], None
     async with httpx.AsyncClient(timeout=_timeout()) as cx:
         for round_ in range(2):  # the chain, then ONE retry of the chain after a pause
@@ -132,7 +133,9 @@ async def complete(body, key):
                 if time.monotonic() - t0 > DEADLINE:
                     break
                 try:
-                    return await _once(cx, body, model, key)
+                    result = await _once(cx, body, model, key)
+                    info["attempts"] = len(tried) + 1
+                    return result
                 except Fail as e:
                     last = e
                 except httpx.HTTPError as e:
@@ -146,6 +149,7 @@ async def complete(body, key):
                 await asyncio.sleep(RETRY_PAUSE)
             else:
                 break
+    info["attempts"] = len(tried)
     raise _unavailable(last, tried)
 
 
@@ -197,6 +201,8 @@ async def stream(body, key, info):
                 got = False
                 try:
                     async for delta in _stream_once(cx, body, model, key, info):
+                        if not got:
+                            info["attempts"] = len(tried) + 1
                         got = True
                         yield "t", delta
                     return
@@ -218,4 +224,5 @@ async def stream(body, key, info):
                 await asyncio.sleep(RETRY_PAUSE)
             else:
                 break
+    info["attempts"] = len(tried)
     raise _unavailable(last, tried)
