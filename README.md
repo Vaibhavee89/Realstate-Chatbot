@@ -124,22 +124,34 @@ message is calm, and that passages are still returned, on both the streaming and
 advice-marker path and that an obvious advice question makes zero model calls.
 
 ## Evaluation
-A small eval suite lives in `eval/`: 43 questions with expected facts (`eval/questions.json`). Expected facts were checked
-against the scraped data first, and matching ignores case, accents, commas and spacing. The questions come in groups:
-23 **fact lookups** (13 DarGlobal, 10 Wasalt), 8 **country and comparison** questions ("List DarGlobal's projects in Oman",
-"Compare DarGlobal and Wasalt"), 6 **paraphrases** with little word overlap ("Who runs DarGlobal day to day?"), and 6 the
-data **cannot answer** (Wasalt's support phone, DarGlobal's share price, an off-topic question).
+A small eval suite lives in `eval/`: 86 questions (`eval/questions.json`). Expected facts were checked against the scraped
+data first, and matching ignores case, accents, commas, spacing and `[n]` citation markers. The groups:
+40 **answerable** questions with expected facts (23 fact lookups, 8 country and comparison, 6 paraphrases with little word
+overlap such as "Who runs DarGlobal day to day?", 3 boundary questions that mention investing but are factual, e.g. "What do
+ROI, ROE and ROL mean according to DarGlobal?"); 6 the data **cannot answer** (Wasalt's support phone, DarGlobal's share price,
+an off-topic question); 24 **investment-advice** questions that must be refused; and 16 more factual questions that must simply
+not be refused.
 
-Live deployment, 2026-11-19, `openrouter/free`:
+Live deployment, 2026-11-19, with the three-model chain:
 
 | Metric | Score | What it measures |
 |---|---|---|
-| Retrieval hit rate | **35 / 37 (95%)** | retrieved context contains the expected facts (offline, no model) |
-| Answer accuracy | **35 / 37 (95%)** | the model's answer contains the expected facts |
-| Correct "I don't know" | **6 / 6 (100%)** | unanswerable questions answered with "I don't have that", and no sources shown |
-| False "I don't know" | **0 / 37** | answerable questions answered with an "I don't have..." opening (see note below) |
+| Retrieval hit rate | **38 / 40 (95%)** | retrieved context contains the expected facts (offline, no model) |
+| Answer accuracy | **38 / 40 (95%)** | the model's answer contains the expected facts |
+| Correct "I don't know" | **6 / 6 (100%)** | unanswerable questions answered with "I don't have that" |
+| False "I don't know" | **1 / 40** | answerable questions answered with an "I don't have..." opening (see note below) |
+| Investment advice refused | **24 / 24** | tuned-on 6/6, seen-while-tuning 10/10, **held-out 8/8** |
+| False refusals | **0 / 62** | factual questions wrongly refused |
+| Answers citing a passage `[n]` | **39 / 39** | 0 answers with a citation number that does not exist |
+| Cited passages contain the facts | **37 / 38** | of fact-correct answers that cite: the cited passage really holds the fact |
 
-By group, answers: fact lookups 22/23, country and comparison 8/8, paraphrases 5/6.
+By group, answers: fact lookups 22/23, country and comparison 8/8, paraphrases 5/6, boundary 3/3.
+
+**The advice guardrail, honestly.** The regex layer alone refuses only the phrasings it was written for: offline it catches
+6/6 of the questions it was tuned on but just 1/10 and 2/8 on two fresh sets (I tuned until the first fresh set passed, then
+wrote the second set after freezing the design). The model layer is what generalizes: together they refused 24/24, including
+all 8 held-out questions, with no false refusals. Eight held-out questions is a small sample, and the model layer relies on a
+free model following the marker instruction.
 
 **What hybrid retrieval and metadata changed** (retrieval hit rate on the same 37 questions, offline):
 
@@ -159,24 +171,25 @@ did not. The new question groups were written before tuning, but 43 questions is
 picked between 0.5 and 0.8, not fine-tuned.
 
 **Known failures:** *"Which brands partner with DarGlobal?"* (the brand list sits in a chunk with unrelated text and the page
-says "partnered", not "partner"; the answer names only Lamborghini and says "12+ partners"), and *"Can a foreigner own a home
-in Riyadh?"*, which names no company, so the bot answered from DarGlobal's page on foreign buyers instead of Wasalt's (the
-expected fact was Wasalt's 3,000 sqm limit; arguably an ambiguous question). One more: *"Who runs DarGlobal day to day?"* says the excerpts don't say,
-though they name the CEO. Earlier experiments with smaller chunks and a suffix stemmer gave no net gain on keyword retrieval alone.
+says "partnered", not "partner"; the answer names only Lamborghini) and *"Who runs DarGlobal day to day?"* (it says the excerpts
+don't say, though they name the CEO, so it is also the one false "I don't know"). *"Can a foreigner own a home in Riyadh?"*
+failed in an earlier run, answering from DarGlobal's page on foreign buyers instead of Wasalt's (the question names no
+company), and passed in this one: free-model answers vary between runs. Earlier experiments with smaller chunks and a suffix
+stemmer gave no net gain on keyword retrieval alone.
 
 Note on "I don't know" detection: the first live run flagged one answerable question (the Oman project list) as an "I don't know",
 because it opened "I don't have a complete list..." and then listed real projects, so its sources were hidden. The detector
 (`is_unknown` in `app/retrieval.py`) now only counts a denial in the *first sentence* and treats a partial admission
 ("complete", "full", "exhaustive", "comprehensive") as an answer, which keeps its sources. This changes how the answer is
-classified, not what the model said: the same saved answers were re-scored (0/37 false "I don't know", still 6/6 correct on
-unanswerable questions) and only that one answer changed.
+classified, not what the model said: the same saved answers were re-scored (still 6/6 correct on unanswerable questions) and only that
+one answer changed.
 
     python eval/run_eval.py --retrieval-only                      # free, no model calls
     python eval/run_eval.py --url https://<your-app>.onrender.com  # full run; --resume reuses cached answers
 
 Caveats: the check is "expected facts are present", so it does not penalise extra or loosely worded content; the free model
-is non-deterministic, so rerunning can shift individual results. Full per-question output is in `eval/results.json`. The
-free OpenRouter tier (~50 requests/day) is too small for a full run unless the account has credit.
+is non-deterministic, so rerunning can shift individual results. Full per-question output is in `eval/results.json`. A full
+run makes roughly 60 model requests, more than the free OpenRouter tier's ~50 a day, so it needs an account with credit.
 
 ## Limitations
 - **Wasalt coverage is partial**: no live listings or prices beyond the copied snapshot, and no detailed policies. Counts
