@@ -146,6 +146,25 @@ input::placeholder{color:var(--placeholder)}
 .foot{max-width:880px;width:100%;margin:0 auto;padding:0 32px 16px;color:var(--bronze);font-size:11px}
 
 /* right panel */
+.kb{position:relative;margin-bottom:16px}
+.kb-chip{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:9px;width:100%;padding:10px 14px;border:1px solid rgba(140,122,107,.35);border-radius:4px;background:var(--panel);color:var(--stone);font:600 11px/16px var(--sans);letter-spacing:.12em;text-transform:uppercase;transition:border-color .15s}
+.kb-chip:hover,.kb.open .kb-chip,.kb:focus-within .kb-chip{border-color:rgba(197,168,128,.7)}
+.kb-chip:focus-visible{outline:2px solid var(--champagne);outline-offset:2px}
+.kb-dot{flex:none;width:7px;height:7px;border-radius:50%;background:var(--champagne)}
+.kb.stale .kb-dot{background:var(--gold);box-shadow:0 0 8px var(--gold)}
+.kb-title{color:var(--alabaster)}
+.kb-date{margin-left:auto;color:var(--bronze);font-weight:500;letter-spacing:.06em;text-transform:none;white-space:nowrap}
+.kb.stale .kb-date{color:var(--gold);font-weight:600}
+.kb-chip svg{flex:none;width:14px;height:14px;fill:none;stroke:var(--bronze);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s}
+.kb:hover .kb-chip svg,.kb:focus-within .kb-chip svg,.kb.open .kb-chip svg{transform:rotate(180deg)}
+/* the full card is a popover: it overlays the page (no layout shift) and appears on hover, keyboard focus, or tap/click */
+.kb-card{position:absolute;top:calc(100% + 8px);left:0;right:0;z-index:30;margin:0;box-shadow:0 18px 40px -12px rgba(0,0,0,.55);
+  opacity:0;visibility:hidden;transform:translateY(-6px);transition:opacity .18s,transform .18s,visibility 0s linear .22s}
+.kb-card::before{content:"";position:absolute;left:0;right:0;top:-10px;height:10px}   /* hover bridge across the gap */
+.kb:hover .kb-card,.kb:focus-within .kb-card,.kb.open .kb-card{opacity:1;visibility:visible;transform:none;transition:opacity .18s,transform .18s,visibility 0s}
+/* solid, not the translucent .card background: the popover sits on top of other content */
+.kb .kb-card{background:var(--obsidian);border-color:rgba(197,168,128,.45)}
+@media(prefers-reduced-motion:reduce){.kb-card,.kb-chip svg{transition:none}}
 .panel{padding:20px 20px 20px 4px;overflow:auto;min-height:0}
 .card{background:var(--panel);border:1px solid rgba(140,122,107,.25);border-radius:4px;padding:20px;margin-bottom:16px}
 .card h2{font:500 24px/32px var(--serif);color:var(--alabaster);margin:6px 0 10px}
@@ -193,7 +212,12 @@ input::placeholder{color:var(--placeholder)}
 </main>
 
 <section class="panel">
-  <div class="card">
+  <div class="kb" id="kb">
+   <button class="kb-chip" id="kb-chip" type="button" aria-expanded="false" aria-controls="kb-card">
+     <i class="kb-dot"></i><span class="kb-title">What I know</span><span class="kb-date" id="kb-date"></span>
+     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+   </button>
+   <div class="card kb-card" id="kb-card" role="region" aria-label="Knowledge base">
     <div class="caps" style="color:var(--champagne)">Knowledge base</div>
     <h2>What I know</h2>
     <p>I answer from scraped public pages, and say so when I don't have the answer.</p>
@@ -203,6 +227,7 @@ input::placeholder{color:var(--placeholder)}
     </div>
     <div class="fresh" id="fresh" hidden><i></i><span id="fresh-text"></span></div>
     <p class="note">*Wasalt's site blocks automated page access, so its data is a catalog built from public sitemaps (counts by type and city, sample listings) plus a few public pages copied by hand (about, Riyadh listings, projects). Prices are snapshots.</p>
+   </div>
   </div>
   <div class="card" id="srcs" hidden>
     <div class="caps" style="color:var(--champagne)">References</div>
@@ -429,6 +454,8 @@ f.onsubmit=async e=>{
     if(m.dar_pages)document.getElementById('n-dar').textContent=m.dar_pages.toLocaleString('en-US');
     if(m.wasalt_listings)document.getElementById('n-was').textContent=m.wasalt_listings.toLocaleString('en-US');
     const f=document.getElementById('fresh');f.hidden=false;f.classList.toggle('stale',!!m.stale);
+    const kb=document.getElementById('kb');kb.classList.toggle('stale',!!m.stale);
+    document.getElementById('kb-date').textContent=m.stale?`may be out of date · ${fmt(m.scraped_at)}`:`updated ${fmt(m.scraped_at)}`;
     const kept=m.carried_over?` · ${m.carried_over} page${m.carried_over>1?'s':''} kept from an earlier crawl`:'';
     const txt=(m.stale?`Data may be out of date · last updated ${fmt(m.scraped_at)} (${m.age_days} days ago)`:`Data last updated ${fmt(m.scraped_at)}`)+kept;
     document.getElementById('fresh-text').textContent=txt;
@@ -451,5 +478,14 @@ try{matchMedia('(prefers-color-scheme: light)').addEventListener('change',e=>{
   let saved=null;try{saved=localStorage.getItem('theme')}catch(_){}
   if(!saved)applyTheme(e.matches?'light':'dark',false);
 })}catch(e){}
+
+/* ---- "What I know" card: collapsed to a tab; hover or keyboard focus opens it, a click/tap pins it open (touch has no hover) ---- */
+(()=>{
+  const kb=document.getElementById('kb'),chip=document.getElementById('kb-chip');
+  const set=open=>{kb.classList.toggle('open',open);chip.setAttribute('aria-expanded',String(open))};
+  chip.addEventListener('click',()=>{const open=!kb.classList.contains('open');set(open);if(!open)chip.blur()});   // blur: :focus-within would keep it open
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&kb.classList.contains('open')){set(false);chip.blur()}});
+  document.addEventListener('click',e=>{if(!kb.contains(e.target)&&kb.classList.contains('open'))set(false)});
+})();
 welcome();
 </script></body></html>

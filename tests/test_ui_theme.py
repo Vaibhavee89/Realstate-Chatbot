@@ -154,6 +154,8 @@ def main():
                     ask("MODEALL projects in Oman")                                         # outage notice + passages
                     pg.click(".enq-btn")                                                    # the Enquire form message
                     pg.evaluate("document.querySelector('#fresh') && (document.querySelector('#fresh').hidden = false)")
+                    if pg.locator('.kb-chip').is_visible():   # the side panel only exists on wide screens
+                        pg.hover('.kb-chip'); pg.wait_for_timeout(400)   # open the knowledge-base card so its text is scanned too
                     res = pg.evaluate(SCAN)
                     low = [x for x in res["fails"]]
                     check(f"{name} / {label}: all {res['checked']} visible text elements meet WCAG AA contrast", not low,
@@ -186,6 +188,55 @@ def main():
             pg.wait_for_timeout(2200)
             check("the icon goes back to normal after a moment", "copied" not in (btn.get_attribute("class") or "")
                   and btn.get_attribute("aria-label") == "Copy answer")
+            ctx.close()
+
+            # ---------------------------------------------------------------- the "What I know" tab: collapsed, opens on hover / focus / click
+            ctx = b.new_context(viewport={"width": 1280, "height": 900})
+            pg = ctx.new_page(); pg.goto(APP + "/"); pg.wait_for_selector("#chips span"); pg.wait_for_timeout(500)
+            chip, card = pg.locator("#kb-chip"), pg.locator("#kb-card")
+            away = lambda: (pg.mouse.move(600, 500), pg.wait_for_timeout(500))
+            check("collapsed by default: a tab with the data date is visible, the card is not",
+                  chip.is_visible() and not card.is_visible() and "updated" in chip.inner_text().lower(), chip.inner_text())
+            chip.hover(); pg.wait_for_timeout(350)
+            check("hovering the tab opens the card (counts and the Wasalt caveat)", card.is_visible() and "60,000" in card.inner_text()
+                  and "blocks automated" in card.inner_text())
+            pg.mouse.move(chip.bounding_box()["x"] + 40, chip.bounding_box()["y"] + chip.bounding_box()["height"] + 5)  # across the gap
+            pg.wait_for_timeout(120)
+            check("moving the pointer from the tab down into the card does not close it (no flicker)", card.is_visible())
+            away()
+            check("moving the pointer away closes it", not card.is_visible())
+            chip.focus(); pg.wait_for_timeout(350)
+            check("keyboard focus on the tab opens it too", card.is_visible())
+            pg.evaluate("document.activeElement.blur()"); pg.wait_for_timeout(450)
+            check("...and leaving it closes it", not card.is_visible())
+            chip.click(); away()
+            check("a click pins it open (this is how touch screens, which have no hover, use it)", card.is_visible()
+                  and chip.get_attribute("aria-expanded") == "true")
+            chip.click(); away()
+            check("a second click unpins it", not card.is_visible() and chip.get_attribute("aria-expanded") == "false")
+            chip.click(); away(); pg.keyboard.press("Escape"); pg.wait_for_timeout(450)
+            check("Escape closes a pinned card", not card.is_visible() and chip.get_attribute("aria-expanded") == "false")
+            chip.click(); away(); pg.mouse.click(600, 400); pg.wait_for_timeout(450)
+            check("clicking elsewhere closes a pinned card", not card.is_visible())
+            pg.fill("#q", "What projects does DarGlobal have in Oman?"); pg.press("#q", "Enter")
+            pg.wait_for_function("document.querySelector('#go').disabled === false", timeout=30000); pg.wait_for_timeout(300)
+            top_before = pg.locator("#srcs").bounding_box()["y"]
+            chip.hover(); pg.wait_for_timeout(350)
+            top_open = pg.locator("#srcs").bounding_box()["y"]
+            box, vp = card.bounding_box(), pg.viewport_size
+            check("opening the card overlays the page: the sources box below does not move", top_before == top_open, (top_before, top_open))
+            bg = pg.evaluate("getComputedStyle(document.querySelector('#kb-card')).backgroundColor")
+            check("the open card is opaque, so the sources box behind it does not show through", bg.startswith("rgb(") or bg.endswith(", 1)"), bg)
+            check("  ...and the card stays inside the window", box["x"] >= 0 and box["x"] + box["width"] <= vp["width"]
+                  and box["y"] + box["height"] <= vp["height"], box)
+            ctx.close()
+            ctx = b.new_context(viewport={"width": 1280, "height": 900})
+            pg = ctx.new_page()
+            pg.route("**/api/meta", lambda r: r.fulfill(json={"scraped_at": "2026-09-01", "changed_at": "2026-09-01", "dar_pages": 118,
+                                                              "wasalt_listings": 59000, "age_days": 79, "stale": True}))
+            pg.goto(APP + "/"); pg.wait_for_selector("#chips span"); pg.wait_for_timeout(500)
+            check("stale data is flagged on the collapsed tab itself (amber, 'may be out of date')",
+                  "may be out of date" in pg.inner_text("#kb-chip").lower() and "stale" in (pg.get_attribute("#kb", "class") or ""))
             ctx.close()
 
             # ---------------------------------------------------------------- the admin page follows the same saved theme

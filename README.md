@@ -23,7 +23,8 @@ only the wait before the first word is sped up, and the video says so on screen 
 clicks run at real speed. The enquiry form is filled with obviously fake data.
 
 The UI has a **dark and a light theme**: it follows your system setting, the header button switches, and the choice is
-remembered.
+remembered. The "What I know" panel is a small tab (it shows when the data was last updated, in amber if it is
+out of date) that opens on hover, keyboard focus or a click or tap.
 
 | Dark | Light |
 |---|---|
