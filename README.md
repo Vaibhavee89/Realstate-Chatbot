@@ -36,8 +36,27 @@ Captured from the live deployment with real answers.
    retrieves for each company separately, so both are represented. Weak matches are cut and at most two chunks per page are
    used. If the embeddings cannot load, it falls back to BM25 only. The model sees each excerpt labelled with its company,
    page type and country.
-3. **Generation**: the top chunks go to an OpenRouter free model (`openrouter/free`) with an instruction to answer only from
-   the excerpts. Sources are shown, but not for "I don't know" answers.
+3. **Generation**: the top chunks go to an OpenRouter free model with an instruction to answer only from the excerpts,
+   and to cite them as `[1]`, `[2]`... Sources are shown, but not for "I don't know" answers.
+   - **Visible grounding**: every answer carries the exact passages the model saw. Citation numbers become clickable chips
+     that open and highlight that passage (company, page type, country, source link, text); a citation to a passage that
+     does not exist is dropped. For "I don't know" answers the same panel reads "What I searched · N passages, none
+     answered the question".
+   - **Investment-advice refusal**: a question asking for a recommendation or prediction ("should I invest", "will prices
+     rise", "is it a good investment") gets a short disclaimer instead of an answer: *"I can't give investment advice,
+     recommend a purchase, or predict prices or returns. I can tell you what DarGlobal and Wasalt publicly state..."*.
+     Two layers: (1) regex patterns run before any model call (instant, free, high precision, but they only know the
+     phrasings written into them), and (2) the model is told to reply with a marker for advice-seeking questions, which the
+     server swaps for the same refusal (it understands intent the patterns miss). Questions that merely mention investing
+     ("What do ROI, ROE and ROL mean according to DarGlobal?") are answered.
+   - **Resilience** (`app/llm.py`): a chain of three `:free` models from different providers is tried in order
+     (`openrouter/free`, `google/gemma-4-31b-it:free`, `nvidia/nemotron-3-ultra-550b-a55b:free`): busy, upstream rate
+     limit, 5xx, timeout, empty reply or a removed model moves on to the next; if the whole chain fails it is retried
+     **once** after a short pause, and the UI shows "trying another free model…". The daily free quota is shared by all
+     free models, so when it is used up the chain stops at once and says so, with the reset time. In every failure case
+     the user gets a calm message (no raw error codes), a "Try again" button where retrying helps, and the **retrieved
+     passages**, so the app still shows real source text when the AI cannot write an answer. The answer reports which
+     model wrote it. A reply that breaks mid-way keeps its partial text.
 4. **Streaming**: the UI calls `POST /api/chat/stream`, which forwards OpenRouter's tokens as Server-Sent Events
    (`{"start"}`, `{"t": token}`..., then `{"done", "sources"}` or `{"error"}`), so text appears as it is generated
    instead of after the full reply; a slow free model feels much faster. Empty streams are retried before anything is
@@ -88,13 +107,21 @@ Without Docker: `pip install -r requirements.txt && python -m app.build_index &&
 | Variable | Purpose | Default |
 |---|---|---|
 | `OPENROUTER_API_KEY` | required, from openrouter.ai | - |
-| `OPENROUTER_MODEL` | model ID | `openrouter/free` |
-| `OPENROUTER_FALLBACKS` | comma-separated extra `:free` model IDs | none |
+| `OPENROUTER_MODEL` | first model in the chain | `openrouter/free` |
+| `OPENROUTER_FALLBACKS` | comma-separated fallback `:free` models (empty = none) | `google/gemma-4-31b-it:free,nvidia/nemotron-3-ultra-550b-a55b:free` |
+| `LLM_READ_TIMEOUT` / `LLM_DEADLINE` | seconds to wait for each model's next chunk / to keep starting attempts | `25` / `60` |
 | `PORT` | listen port (set by Render) | `8000` |
 
 ## 3. Deploy (Render, free)
 Push to GitHub -> Render > New > Blueprint (reads `render.yaml`) -> set the `OPENROUTER_API_KEY` secret -> deploy.
 Later pushes to `main` redeploy automatically. Never commit the key (`.env` is git-ignored).
+
+## Tests
+`python tests/test_resilience.py` runs 23 checks with no API key and no network: it starts a fake OpenRouter
+(`tests/fake_openrouter.py`) and the app, injects failures (busy model, empty reply, whole chain down, quota used up,
+bad key, break mid-answer) and asserts which models were tried, that exactly one retry happens, that the user-facing
+message is calm, and that passages are still returned, on both the streaming and JSON endpoints. It also checks the
+advice-marker path and that an obvious advice question makes zero model calls.
 
 ## Evaluation
 A small eval suite lives in `eval/`: 43 questions with expected facts (`eval/questions.json`). Expected facts were checked
@@ -155,8 +182,11 @@ free OpenRouter tier (~50 requests/day) is too small for a full run unless the a
 - **Wasalt coverage is partial**: no live listings or prices beyond the copied snapshot, and no detailed policies. Counts
   come from a sitemap snapshot and are not live inventory. Questions outside this data get an "I don't have that" answer.
 - **DarGlobal data is a point-in-time crawl**; some pages render identical project lists, which are de-duplicated.
-- **Free model**: OpenRouter's free tier allows roughly 50 requests/day without credit, models rotate, and replies can be
-  slow or occasionally empty (the app retries). Errors show the real OpenRouter status code (429 = daily limit,
-  401 = bad key, 402 = no credits).
+- **Free models**: OpenRouter's free tier allows roughly 50 requests/day without credit (about 1,000 after a one-time
+  $10 top-up), models rotate and replies can be slow or occasionally empty. The app falls back across models, retries
+  once, and degrades to showing the retrieved passages with a clear message (see Resilience). Free model IDs change
+  often; if one is removed it is skipped, and the chain can be changed with the environment variables above.
+- **Advice guardrail**: the regex layer is brittle by itself (see Evaluation); the model layer depends on a free model
+  following the marker instruction, so an unusual phrasing can still slip through to a normal answer.
 - Retrieval blends keywords with small static embeddings, so a page that only mentions a term in passing can still appear as a source. Country and page-type tags are keyword heuristics, not hand-labelled.
 - Answers are informational and not investment advice.

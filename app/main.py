@@ -1,20 +1,16 @@
-import json, os, re
+import json, os
 from pathlib import Path
 
-import httpx
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from app.retrieval import CHUNKS, UNKNOWN, is_unknown, retrieve  # noqa: F401  (re-exported for the eval)
-from app import retrieval
+
+from app import llm, retrieval
 from app.guard import MARKER, REFUSAL, is_investment_advice
+from app.retrieval import CHUNKS, UNKNOWN, is_unknown, retrieve  # noqa: F401  (re-exported for the eval)
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data"
-MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
-FALLBACKS = [m for m in os.getenv("OPENROUTER_FALLBACKS", "").split(",") if m]
-API = os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions")  # override only for tests
 
 SYSTEM = (
     "You are a helpful assistant for two real-estate companies: DarGlobal (London-listed luxury "
@@ -32,7 +28,6 @@ SYSTEM = (
     f"state or publish (prices, definitions such as ROI, investment opportunities they describe) are factual: answer them."
 )
 
-
 app = FastAPI(title="DarGlobal & Wasalt Assistant")
 
 
@@ -43,11 +38,11 @@ class Chat(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"ok": True, "chunks": len(CHUNKS), "model": MODEL, "embeddings": retrieval.EMB is not None}
+    return {"ok": True, "chunks": len(CHUNKS), "models": llm.CHAIN, "embeddings": retrieval.EMB is not None}
 
 
 def build(req):
-    """retrieve context and build the OpenRouter request body"""
+    """retrieve context and build the OpenRouter request body (llm.py sets the model)"""
     ctx = retrieve(req.message)
     context = "\n\n".join(
         f"[{i+1}] {retrieval.SITE_NAME[c['site']]} | {c['page_type']} page"
@@ -56,26 +51,7 @@ def build(req):
     msgs = [{"role": "system", "content": SYSTEM + "\n\nCONTEXT:\n" + context}]
     msgs += [m for m in req.history[-6:] if m.get("role") in ("user", "assistant")]
     msgs.append({"role": "user", "content": req.message})
-    body = {"model": MODEL, "messages": msgs, "temperature": 0.2, "max_tokens": 1500,
-            "reasoning": {"effort": "low"}}
-    if FALLBACKS:
-        body["models"] = [MODEL] + FALLBACKS
-    return ctx, body
-
-
-def headers(key):
-    return {"Authorization": f"Bearer {key}", "X-Title": "RealEstate Assistant"}
-
-
-def explain_status(code, detail=""):
-    print("openrouter error", code, detail[:300], flush=True)
-    hint = {
-        429: "Rate limit reached (the free tier allows limited requests per day). Please try again later.",
-        401: "The server's OpenRouter API key was rejected (401).",
-        402: "The OpenRouter account has insufficient credits (402).",
-        404: "The configured model is unavailable (404).",
-    }.get(code, "The model service returned an error. Please retry in a moment.")
-    return f"{hint} [OpenRouter status {code}]"
+    return ctx, {"messages": msgs, "temperature": 0.2, "max_tokens": 1500, "reasoning": {"effort": "low"}}
 
 
 def passages(ctx):
@@ -94,40 +70,35 @@ def pick_sources(ctx, answer):
     return sources[:4]
 
 
+def refusal_payload():
+    return {"answer": REFUSAL, "sources": [], "passages": [], "refused": True, "unknown": False}
+
+
+def unavailable_payload(u, ctx):
+    """the model could not answer: a calm explanation plus the passages retrieval did find, so the app still helps"""
+    return {"answer": u.message, "kind": u.kind, "code": u.code, "sources": [], "passages": passages(ctx),
+            "refused": False, "unknown": False, "unavailable": True}
+
+
+NO_KEY = llm.Unavailable("config", "The assistant isn't fully set up yet, so it can't write answers right now. "
+                                   "The most relevant passages from the source pages are shown below.", 0)
+
+
 @app.post("/api/chat")
 async def chat(req: Chat):
-    if is_investment_advice(req.message):  # decided before any model call: free, instant, consistent
-        return {"answer": REFUSAL, "sources": [], "passages": [], "refused": True, "unknown": False}
+    if is_investment_advice(req.message):  # layer 1: decided before any model call (free, instant, consistent)
+        return refusal_payload()
+    ctx, body = build(req)
     key = os.getenv("OPENROUTER_API_KEY")
     if not key:
-        return JSONResponse({"answer": "Server is missing OPENROUTER_API_KEY.", "sources": []}, status_code=500)
-    ctx, body = build(req)
-    answer = None
+        return JSONResponse(unavailable_payload(NO_KEY, ctx), status_code=503)
     try:
-        async with httpx.AsyncClient(timeout=60) as cx:
-            # free models sometimes return empty/null content: retry a couple of times
-            for _ in range(3):
-                r = await cx.post(API, json=body, headers=headers(key))
-                r.raise_for_status()
-                ch = r.json()["choices"][0]
-                answer = (ch["message"].get("content") or "").strip()
-                if answer:
-                    break
-                print("empty reply", r.json().get("model"), ch.get("finish_reason"), flush=True)
-    except httpx.HTTPStatusError as e:
-        code = e.response.status_code
-        try:
-            detail = e.response.json().get("error", {}).get("message", "")
-        except Exception:
-            detail = ""
-        return JSONResponse({"answer": explain_status(code, detail), "sources": []}, status_code=502)
-    except Exception as e:
-        return JSONResponse({"answer": f"Could not reach the model service ({type(e).__name__}). Please retry in a moment.", "sources": []}, status_code=502)
-    if not answer:
-        return JSONResponse({"answer": "The free model returned an empty reply. Please try again.", "sources": []}, status_code=502)
-    if answer.strip().startswith(MARKER):  # layer 2: the model recognised an advice-seeking question
-        return {"answer": REFUSAL, "sources": [], "passages": [], "refused": True, "unknown": False}
-    return {"answer": answer, "sources": pick_sources(ctx, answer), "passages": passages(ctx),
+        answer, model = await llm.complete(body, key)
+    except llm.Unavailable as u:
+        return JSONResponse(unavailable_payload(u, ctx), status_code=503)
+    if answer.startswith(MARKER):  # layer 2: the model recognised an advice-seeking question
+        return refusal_payload()
+    return {"answer": answer, "sources": pick_sources(ctx, answer), "passages": passages(ctx), "model": model,
             "refused": False, "unknown": is_unknown(answer)}
 
 
@@ -137,83 +108,63 @@ def sse(obj):
 
 @app.post("/api/chat/stream")
 async def chat_stream(req: Chat):
-    """Server-Sent Events: {"start":true}, then {"t": "<token text>"} ..., then {"done":true,"sources":[...]}
-    or {"error": "..."}. Tokens are forwarded as OpenRouter produces them."""
+    """Server-Sent Events: {"start":true,...}, then {"t": "<token text>"} ..., then {"done":true,"sources":[...],
+    "passages":[...]} or {"error": "...", "kind": "...", "passages": [...]}. Tokens are forwarded as they are produced."""
+    headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
     if is_investment_advice(req.message):
         async def refuse():
             yield sse({"start": True, "found": 0, "pages": 0})
             yield sse({"t": REFUSAL})
-            yield sse({"done": True, "sources": [], "passages": [], "refused": True, "unknown": False})
-        return StreamingResponse(refuse(), media_type="text/event-stream",
-                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+            yield sse({"done": True, **{k: v for k, v in refusal_payload().items() if k != "answer"}})
+        return StreamingResponse(refuse(), media_type="text/event-stream", headers=headers)
+    ctx, body = build(req)
     key = os.getenv("OPENROUTER_API_KEY")
     if not key:
-        return JSONResponse({"answer": "Server is missing OPENROUTER_API_KEY.", "sources": []}, status_code=500)
-    ctx, body = build(req)
-    body["stream"] = True
+        async def nokey():
+            p = unavailable_payload(NO_KEY, ctx)
+            yield sse({"start": True, "found": len(ctx), "pages": len({(c["url"], c["title"]) for c in ctx})})
+            yield sse({"error": p["answer"], "kind": p["kind"], "code": 0, "passages": p["passages"]})
+        return StreamingResponse(nokey(), media_type="text/event-stream", headers=headers)
 
     async def gen():
         # flush headers right away; also reports what retrieval found so the UI can show a real status line
         yield sse({"start": True, "found": len(ctx), "pages": len({(c["url"], c["title"]) for c in ctx})})
-        answer, sent, advice = "", 0, False
+        answer, sent, advice, info = "", 0, False, {}
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(90, read=75)) as cx:
-                for _ in range(3):  # a free model sometimes streams nothing: retry only while no token was sent
-                    async with cx.stream("POST", API, json=body, headers=headers(key)) as r:
-                        if r.status_code != 200:
-                            raw = (await r.aread()).decode("utf-8", "ignore")
-                            try:
-                                detail = json.loads(raw).get("error", {}).get("message", "")
-                            except Exception:
-                                detail = raw
-                            yield sse({"error": explain_status(r.status_code, detail)})
-                            return
-                        async for line in r.aiter_lines():
-                            if not line.startswith("data:"):
-                                continue  # blank lines and ": OPENROUTER PROCESSING" keep-alive comments
-                            data = line[5:].strip()
-                            if data == "[DONE]":
-                                break
-                            try:
-                                j = json.loads(data)
-                            except ValueError:
-                                continue
-                            if j.get("error"):
-                                yield sse({"error": "The model stopped mid-answer: " + str(j["error"].get("message", ""))[:200]})
-                                return
-                            delta = ((j.get("choices") or [{}])[0].get("delta") or {}).get("content")
-                            if delta:
-                                answer += delta
-                                if sent == 0:  # hold back until we know whether the reply is the advice marker
-                                    head = answer.lstrip()
-                                    if len(head) < len(MARKER) and MARKER.startswith(head):
-                                        continue
-                                    if head.startswith(MARKER):
-                                        advice = True
-                                        break
-                                    yield sse({"t": answer}); sent = len(answer)
-                                else:
-                                    yield sse({"t": delta}); sent = len(answer)
-                    if advice or answer.strip():
+            async for kind, delta in llm.stream(body, key, info):
+                if kind == "note":  # falling back to another model: keep the UI informed
+                    yield sse({"status": delta})
+                    continue
+                answer += delta
+                if sent == 0:  # hold back until we know whether the reply is the advice marker
+                    head = answer.lstrip()
+                    if len(head) < len(MARKER) and MARKER.startswith(head):
+                        continue
+                    if head.startswith(MARKER):
+                        advice = True
                         break
-                    print("empty stream", flush=True)
-        except Exception as e:
-            yield sse({"error": f"Could not reach the model service ({type(e).__name__}). Please retry in a moment."})
+                    yield sse({"t": answer}); sent = len(answer)
+                else:
+                    yield sse({"t": delta}); sent = len(answer)
+        except llm.Unavailable as u:  # nothing was sent yet: explain calmly and still show the retrieved passages
+            p = unavailable_payload(u, ctx)
+            yield sse({"error": p["answer"], "kind": p["kind"], "code": p["code"], "passages": p["passages"]})
+            return
+        except llm.Interrupted as e:  # some text already reached the user: keep it, add a note
+            yield sse({"error": "The AI stopped partway through this answer. Please try again.", "kind": "interrupted",
+                       "passages": passages(ctx)})
+            print("stream interrupted:", e, flush=True)
             return
         if advice:  # layer 2: the model recognised an advice-seeking question; send the standard refusal instead
             yield sse({"t": REFUSAL})
             yield sse({"done": True, "sources": [], "passages": [], "refused": True, "unknown": False})
             return
-        if not answer.strip():
-            yield sse({"error": "The free model returned an empty reply. Please try again."})
-            return
-        if sent == 0:  # the whole reply was a short prefix that we were still holding back
-            yield sse({"t": answer}); sent = len(answer)
+        if sent == 0 and answer:  # the whole reply was a short prefix that we were still holding back
+            yield sse({"t": answer})
         yield sse({"done": True, "sources": pick_sources(ctx, answer.strip()), "passages": passages(ctx),
-                   "refused": False, "unknown": is_unknown(answer.strip())})
+                   "model": info.get("model"), "refused": False, "unknown": is_unknown(answer.strip())})
 
-    return StreamingResponse(gen(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(gen(), media_type="text/event-stream", headers=headers)
 
 
 app.mount("/static", StaticFiles(directory=ROOT / "app" / "static"), name="static")

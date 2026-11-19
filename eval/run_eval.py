@@ -81,9 +81,10 @@ def ask(url, question, retries=2):
             if r.status_code == 200 and j.get("answer"):
                 return {"status": 200, "answer": j["answer"], "sources": j.get("sources", []),
                         "passages": j.get("passages", []), "refused": j.get("refused", False)}
-            last = {"status": r.status_code, "answer": j.get("answer", ""), "sources": [], "passages": [], "refused": False}
-            if r.status_code == 502 and "429" in last["answer"]:
-                return last  # daily rate limit: retrying won't help
+            last = {"status": r.status_code, "answer": j.get("answer", ""), "sources": [], "passages": [], "refused": False,
+                    "kind": j.get("kind")}
+            if j.get("kind") == "quota":
+                return last  # daily free quota used up: retrying won't help
         except Exception as e:  # network / timeout
             last = {"status": 0, "answer": f"{type(e).__name__}", "sources": [], "passages": [], "refused": False}
         time.sleep(3)
@@ -141,7 +142,7 @@ def main():
         r = ask(a.url, q["q"])
         answers[q["id"]] = r
         print(f"  {q['id']}: HTTP {r['status']}  {r['answer'][:70]!r}")
-        if r["status"] == 502 and "429" in r["answer"]:
+        if r.get("kind") == "quota":
             stop = True
             print("  rate limit reached; remaining questions skipped (rerun later with --resume)")
         time.sleep(a.delay)
