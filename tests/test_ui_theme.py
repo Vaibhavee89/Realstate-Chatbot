@@ -168,6 +168,26 @@ def main():
                         pg.screenshot(path=f"{SHOTS}/{name}-{label}-bottom.png")
                     ctx.close()
 
+            # ---------------------------------------------------------------- the copy icon on an answer
+            ctx = b.new_context(permissions=["clipboard-read", "clipboard-write"], viewport={"width": 1280, "height": 900})
+            pg = ctx.new_page(); pg.goto(APP + "/"); pg.wait_for_selector("#chips span")
+            pg.fill("#q", "What projects does DarGlobal have in Oman?"); pg.press("#q", "Enter")
+            pg.wait_for_function("document.querySelector('#go').disabled === false", timeout=30000); pg.wait_for_timeout(300)
+            btn = pg.locator(".bot:last-child .copy-btn")
+            check("the answer has a copy button with an icon and no 'Copy' text", btn.count() == 1 and btn.inner_text().strip() == ""
+                  and btn.locator("svg").count() == 2)
+            check("  ...it is labelled for screen readers", btn.get_attribute("aria-label") == "Copy answer" and btn.get_attribute("title") == "Copy answer")
+            btn.click(); pg.wait_for_timeout(300)
+            check("clicking it shows a check mark and says 'Copied'", "copied" in (btn.get_attribute("class") or "")
+                  and btn.get_attribute("aria-label") == "Copied")
+            clip = pg.evaluate("navigator.clipboard.readText()")
+            check("the answer text is on the clipboard, without the [n] citation markers",
+                  clip.startswith("DarGlobal has") and "[" not in clip, clip[:60])
+            pg.wait_for_timeout(2200)
+            check("the icon goes back to normal after a moment", "copied" not in (btn.get_attribute("class") or "")
+                  and btn.get_attribute("aria-label") == "Copy answer")
+            ctx.close()
+
             # ---------------------------------------------------------------- the admin page follows the same saved theme
             for name, want_bg in (("light", "rgb(245, 241, 234)"), ("dark", "rgb(11, 11, 11)")):
                 ctx = b.new_context(color_scheme="dark" if name == "light" else "light")

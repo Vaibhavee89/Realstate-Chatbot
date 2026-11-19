@@ -60,7 +60,12 @@ main{display:flex;flex-direction:column;min-height:0;min-width:0}
 .cite{margin-top:16px;padding-top:12px;border-top:1px solid rgba(140,122,107,.25);display:flex;flex-wrap:wrap;gap:8px 16px;font-size:12px;line-height:18px;color:var(--bronze);align-items:center}
 .cite a{text-decoration:none;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cite a:hover{text-decoration:underline}
-.cite button{all:unset;cursor:pointer;color:var(--bronze)}.cite button:hover{color:var(--champagne)}
+.cite .copy-btn{all:unset;box-sizing:border-box;cursor:pointer;width:28px;height:28px;display:inline-grid;place-items:center;border:1px solid transparent;border-radius:4px;color:var(--bronze)}
+.cite .copy-btn:hover{color:var(--champagne);border-color:rgba(197,168,128,.45)}
+.cite .copy-btn:focus-visible{outline:2px solid var(--champagne);outline-offset:2px}
+.copy-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.copy-btn .ok{display:none}
+.copy-btn.copied{color:var(--champagne)}.copy-btn.copied .cp{display:none}.copy-btn.copied .ok{display:block}
 .bot .body.streaming>*:last-child:not(ul)::after,.bot .body.streaming>ul:last-child>li:last-child::after{content:'▍';color:var(--champagne);margin-left:2px;animation:blink 1s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
 .ref{display:inline-block;min-width:16px;padding:0 4px;margin:0 2px;border:1px solid rgba(197,168,128,.5);border-radius:3px;color:var(--champagne);font:600 10px/15px var(--sans);vertical-align:super;cursor:pointer;text-align:center;user-select:none}
@@ -259,11 +264,23 @@ document.addEventListener('click',e=>{   /* clicking a [n] chip opens the passag
 });
 
 const modelName=m=>m?String(m).split('/').pop().replace(/:free$/,''):'';
+const COPY_ICON='<svg class="cp" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>'+
+  '<svg class="ok" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 function showSources(w,sources,answer,model){
   if(!(sources&&sources.length)){srcs.hidden=true;return}
   const c=document.createElement('div');c.className='cite caps';
-  c.innerHTML='Sources: '+sources.map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener" title="${esc(x.title)}">${esc(site(x.url))}</a>`).join('')+'<button>Copy</button>'+(model?`<span class="mdl">· answered by ${esc(modelName(model))}</span>`:'');
-  c.querySelector('button').onclick=ev=>{navigator.clipboard&&navigator.clipboard.writeText(plain(answer));ev.target.textContent='Copied'};
+  c.innerHTML='Sources: '+sources.map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener" title="${esc(x.title)}">${esc(site(x.url))}</a>`).join('')+'<button type="button" class="copy-btn" aria-label="Copy answer" title="Copy answer">'+COPY_ICON+'</button>'+(model?`<span class="mdl">· answered by ${esc(modelName(model))}</span>`:'');
+  const btn=c.querySelector('.copy-btn');
+  btn.onclick=async()=>{
+    const text=plain(answer);let ok=false;
+    try{await navigator.clipboard.writeText(text);ok=true}
+    catch(e){   /* clipboard API blocked (e.g. an insecure origin): fall back to the old selection-based copy */
+      try{const ta=document.createElement('textarea');ta.value=text;ta.style.cssText='position:fixed;opacity:0';document.body.appendChild(ta);ta.select();ok=document.execCommand('copy');ta.remove()}catch(_){}
+    }
+    if(!ok)return;
+    btn.classList.add('copied');btn.setAttribute('aria-label','Copied');btn.title='Copied';
+    setTimeout(()=>{btn.classList.remove('copied');btn.setAttribute('aria-label','Copy answer');btn.title='Copy answer'},1800);
+  };
   w.appendChild(c);
   srclist.innerHTML=sources.map(x=>`<a class="src" href="${esc(x.url)}" target="_blank" rel="noopener"><span class="tag caps">${/wasalt/.test(x.url)?'Wasalt':'DarGlobal'}</span><span class="t">${esc(x.title)}</span><span class="u">${esc(x.url)}</span></a>`).join('');
   srcs.hidden=false;
