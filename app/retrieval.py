@@ -162,6 +162,17 @@ UNKNOWN = re.compile(
     r"(don['’]t|do not|doesn['’]t|does not|cannot|can['’]t|no) (have|know|contain|include|provide|find|mention|specify|list)|"
     r"not (available|provided|mentioned|included|in the (provided )?(context|excerpts|information))|no (relevant )?information",
     re.I)
+PARTIAL = re.compile(r"\b(complete|full|exhaustive|comprehensive|entire)\b|\ball of\b", re.I)
+
+
+def is_unknown(answer):
+    """True if the answer is an "I don't know": the denial is in the first sentence. A partial admission ("I don't have
+    a complete list... but here is what the excerpts say") or an answer that only notes a gap later on ("... I don't have
+    prices.") still gives real information, so it is not unknown and keeps its sources."""
+    first_sentence = re.split(r"(?<=[.!?])\s", answer.strip(), maxsplit=1)[0]
+    return bool(UNKNOWN.search(first_sentence)) and not PARTIAL.search(first_sentence)
+
+
 COMPARE = re.compile(r"\bcompar|\bvs\.?\b|versus|differ|difference|\bboth\b|each company|which company|which of", re.I)
 TYPE_HINTS = [(r"\b(news|press|announce\w*|launch\w*)\b", {"press", "blog"}), (r"\bfaq\b|frequently asked", {"faq"}),
               (r"\binvestor|investment relations|shareholder", {"investor"}), (r"\bpartner\w*|\bbrands?\b", {"partner", "home", "investor"})]

@@ -94,7 +94,7 @@ def main():
     if a.retrieval_only:
         return
 
-    from app.main import UNKNOWN  # same "I don't know" pattern the server uses to hide sources
+    from app.main import is_unknown  # same "I don't know" test the server uses to hide sources
 
     cache = json.loads(RESULTS.read_text()).get("answers", {}) if (a.resume and RESULTS.exists()) else {}
     answers, stop = {}, False
@@ -123,12 +123,12 @@ def main():
         if r["status"] != 200:
             continue
         ok, hit = facts_found(r["answer"], q["expect"], q.get("min"))
-        ans_rows.append({"id": q["id"], "ok": ok, "false_idk": bool(UNKNOWN.search(r["answer"][:240])), "groups": hit})
+        ans_rows.append({"id": q["id"], "ok": ok, "false_idk": is_unknown(r["answer"]), "groups": hit})
     for q in unknown:
         r = answers[q["id"]]
         if r["status"] != 200:
             continue
-        says_idk = bool(UNKNOWN.search(r["answer"][:240]))
+        says_idk = is_unknown(r["answer"])
         idk_rows.append({"id": q["id"], "ok": says_idk, "sources_hidden": not r["sources"]})
 
     errs = [q["id"] for q in qs if not ok_resp(q)]

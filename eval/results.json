@@ -1021,7 +1021,7 @@
   "answerable": 37,
   "answer_correct": 35,
   "answer_scored": 37,
-  "false_idk": 1,
+  "false_idk": 0,
   "idk_correct": 6,
   "idk_scored": 6,
   "errors": []

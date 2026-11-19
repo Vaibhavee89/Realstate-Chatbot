@@ -110,7 +110,7 @@ Live deployment, 2026-11-19, `openrouter/free`:
 | Retrieval hit rate | **35 / 37 (95%)** | retrieved context contains the expected facts (offline, no model) |
 | Answer accuracy | **35 / 37 (95%)** | the model's answer contains the expected facts |
 | Correct "I don't know" | **6 / 6 (100%)** | unanswerable questions answered with "I don't have that", and no sources shown |
-| False "I don't know" | **1 / 37** | answerable questions where the answer opens with "I don't have..." |
+| False "I don't know" | **0 / 37** | answerable questions answered with an "I don't have..." opening (see note below) |
 
 By group, answers: fact lookups 22/23, country and comparison 8/8, paraphrases 5/6.
 
@@ -134,10 +134,15 @@ picked between 0.5 and 0.8, not fine-tuned.
 **Known failures:** *"Which brands partner with DarGlobal?"* (the brand list sits in a chunk with unrelated text and the page
 says "partnered", not "partner"; the answer names only Lamborghini and says "12+ partners"), and *"Can a foreigner own a home
 in Riyadh?"*, which names no company, so the bot answered from DarGlobal's page on foreign buyers instead of Wasalt's (the
-expected fact was Wasalt's 3,000 sqm limit; arguably an ambiguous question). Two quirks: an answer that starts "I don't have a
-complete list..." and then lists real projects (Oman) hides its sources, because the "I don't know" detector looks only at the
-opening words; and *"Who runs DarGlobal day to day?"* says the excerpts don't say, though they name the CEO. Earlier experiments
-with smaller chunks and a suffix stemmer gave no net gain on keyword retrieval alone.
+expected fact was Wasalt's 3,000 sqm limit; arguably an ambiguous question). One more: *"Who runs DarGlobal day to day?"* says the excerpts don't say,
+though they name the CEO. Earlier experiments with smaller chunks and a suffix stemmer gave no net gain on keyword retrieval alone.
+
+Note on "I don't know" detection: the first live run flagged one answerable question (the Oman project list) as an "I don't know",
+because it opened "I don't have a complete list..." and then listed real projects, so its sources were hidden. The detector
+(`is_unknown` in `app/retrieval.py`) now only counts a denial in the *first sentence* and treats a partial admission
+("complete", "full", "exhaustive", "comprehensive") as an answer, which keeps its sources. This changes how the answer is
+classified, not what the model said: the same saved answers were re-scored (0/37 false "I don't know", still 6/6 correct on
+unanswerable questions) and only that one answer changed.
 
     python eval/run_eval.py --retrieval-only                      # free, no model calls
     python eval/run_eval.py --url https://<your-app>.onrender.com  # full run; --resume reuses cached answers

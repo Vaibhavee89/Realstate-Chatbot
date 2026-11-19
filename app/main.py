@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from app.retrieval import CHUNKS, UNKNOWN, retrieve  # noqa: F401  (re-exported for the eval)
+from app.retrieval import CHUNKS, UNKNOWN, is_unknown, retrieve  # noqa: F401  (re-exported for the eval)
 from app import retrieval
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -72,7 +72,7 @@ def explain_status(code, detail=""):
 
 
 def pick_sources(ctx, answer):
-    if UNKNOWN.search(answer[:240]):
+    if is_unknown(answer):
         return []  # don't cite pages for "I don't know" answers
     seen, sources = set(), []
     for c in ctx:
