@@ -1,17 +1,17 @@
 {
- "scraped_at": "2026-11-18",
- "changed_at": "2026-11-18",
+ "scraped_at": "2026-11-23",
+ "changed_at": "2026-11-23",
  "dar_pages": 120,
  "wasalt_listings": 60000,
  "wasalt_catalog_docs": 13,
  "wasalt_manual_docs": 9,
  "carried_over": 0,
  "carried_since": {},
- "content_hash": "6641ea290698d3141153f8da2ab01d4f27fd5b635e69ecb7fc47b9e19e355ffd",
+ "content_hash": "ca0acf0809ac81ebbf78c0d6a97994dbe1dd2b356fc5ee3a5d6eb2d8b55b8bc9",
  "last_change": {
-  "added": 0,
-  "removed": 0,
-  "modified": 0
+  "added": 13,
+  "removed": 13,
+  "modified": 4
  },
  "sources": {
   "dar": "darglobal.co.uk (crawled)",
